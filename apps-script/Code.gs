@@ -201,7 +201,7 @@ function importDataWithStyles(payload) {
     var bgColors = payload.bgColors || [];
     var fontColors = payload.fontColors || [];
 
-    sheet.appendRow(['進倉單號', '貨主單號', '料號', '數量', '儲位', '操作人員', '上架時間']);
+    sheet.appendRow(['進倉單號', '貨主單號', '料號', '數量', '儲位', '人員', '時間']);
     sheet.getRange(1, 1, 1, 7).setFontWeight('bold');
 
     if (rows.length > 0) {
