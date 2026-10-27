@@ -154,6 +154,23 @@
       font-size: 13px; font-weight: 600; line-height: 1.4; display: none;
     }
     .banner-warning { background: #fef3c7; border: 1.5px solid #f59e0b; color: #92400e; }
+    .banner-old-bin { display: block; font-size: 22px; font-weight: 800; letter-spacing: 1px; margin: 4px 0; color: #78350f; }
+
+    /* GỢI Ý TÌM KIẾM */
+    .search-hint {
+      display: none; margin-top: 8px; font-size: 13px; font-weight: 600; color: var(--danger);
+    }
+
+    /* TOAST */
+    .toast {
+      position: fixed; left: 14px; right: 14px; bottom: calc(18px + env(safe-area-inset-bottom));
+      z-index: 99998; padding: 14px 16px; border-radius: 12px;
+      background: #15803d; color: #ffffff; font-size: 15px; font-weight: 700; text-align: center;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+      opacity: 0; transform: translateY(20px); pointer-events: none;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
 
     /* SHELF LOCATION INPUT 6 DIGITS */
     .shelf-input-container {
@@ -269,9 +286,10 @@
   <div class="card">
     <span class="section-label">1. Tìm Kiếm Thùng Hàng</span>
     <div class="search-wrap">
-      <input type="text" id="boxIdInput" class="search-box" placeholder="Nhập mã thùng (VD: A12, A49...)" oninput="onBoxInputSearch()" onkeydown="if(event.key==='Enter') onBoxInputSearch()" autofocus>
-      <button class="btn-search-exec" onclick="onBoxInputSearch()">Tìm</button>
+      <input type="text" id="boxIdInput" class="search-box" placeholder="Nhập mã thùng (VD: A12, A49...)" oninput="onBoxInputSearch(false)" onkeydown="if(event.key==='Enter') onBoxInputSearch(true)" autofocus>
+      <button class="btn-search-exec" onclick="onBoxInputSearch(true)">Tìm</button>
     </div>
+    <div class="search-hint" id="searchHint"></div>
   </div>
 
   <!-- DANH SÁCH THÙNG TÌM THẤY (CHỐNG VỠ DÒNG) -->
@@ -499,8 +517,11 @@
       }
     }
 
-    function onBoxInputSearch() {
+    // fromSubmit = true khi bấm Enter/nút Tìm; false khi đang gõ
+    function onBoxInputSearch(fromSubmit) {
       const keyword = document.getElementById('boxIdInput').value.trim().toUpperCase();
+      const hint = document.getElementById('searchHint');
+      hint.style.display = 'none';
       if (!keyword) {
         document.getElementById('matchListCard').style.display = 'none';
         document.getElementById('boxDetails').style.display = 'none';
@@ -520,9 +541,15 @@
         document.getElementById('matchListCard').style.display = 'none';
         document.getElementById('boxDetails').style.display = 'none';
         document.getElementById('shelfSection').style.display = 'none';
-        showAlert("Không tìm thấy", "Hàng chưa được nhập dữ liệu, không lên kệ !", "⚠️", () => {
-          document.getElementById('boxIdInput').select();
-        });
+        currentSelectedBoxId = "";
+        if (fromSubmit) {
+          showAlert("Không tìm thấy", "Hàng chưa được nhập dữ liệu, không lên kệ !", "⚠️", () => {
+            document.getElementById('boxIdInput').select();
+          });
+        } else {
+          hint.innerText = `⚠️ Không có thùng nào khớp "${keyword}"`;
+          hint.style.display = 'block';
+        }
         return;
       }
 
@@ -595,15 +622,11 @@
         binElem.innerText = data.bin;
         binElem.style.color = "var(--success)";
 
-        const upperBin = data.bin.toUpperCase();
-        if (upperBin.startsWith("S10") || upperBin.startsWith("S15")) {
-          document.getElementById('binSuffixInput').value = upperBin.substring(3);
-        } else {
-          document.getElementById('binSuffixInput').value = upperBin;
-        }
+        // Không điền sẵn vị trí cũ, tránh bấm xác nhận theo thói quen
+        document.getElementById('binSuffixInput').value = "";
 
         timeElem.innerText = `Lên bởi: ${data.operator} (${data.updatedTime})`;
-        conflictBanner.innerHTML = `⚠️ Thùng này đã được lên kệ tại [${data.bin}] bởi [${data.operator}].<br>Kiểm tra kỹ đơn nhập để tránh nhầm ngày!`;
+        conflictBanner.innerHTML = `⚠️ Thùng này ĐÃ LÊN KỆ tại<span class="banner-old-bin">${data.bin}</span>bởi [${data.operator}]. Kiểm tra kỹ đơn nhập để tránh nhầm ngày!<br>Chỉ nhập vị trí mới nếu muốn chuyển kệ.`;
         conflictBanner.style.display = 'block';
       } else {
         binElem.innerText = "Chưa lên kệ";
@@ -664,11 +687,6 @@
       const fullBinLocation = prefix + suffix;
       const targetBoxId = currentSelectedBoxId;
 
-      if (BOX_MAP[targetBoxId]) {
-        BOX_MAP[targetBoxId].bin = fullBinLocation;
-        BOX_MAP[targetBoxId].operator = currentOperator;
-      }
-
       const submitBtn = document.getElementById('btnSubmitShelf');
       submitBtn.innerText = "⚡ Đang lưu...";
       submitBtn.disabled = true;
@@ -684,7 +702,10 @@
           submitBtn.disabled = false;
 
           if (res.success) {
+            // Chỉ cập nhật bộ nhớ máy khi server đã lưu xong
             if (BOX_MAP[targetBoxId]) {
+              BOX_MAP[targetBoxId].bin = fullBinLocation;
+              BOX_MAP[targetBoxId].operator = currentOperator;
               BOX_MAP[targetBoxId].updatedTime = res.nowStr;
             }
 
@@ -696,8 +717,13 @@
             currentSelectedBoxId = "";
             document.getElementById('boxIdInput').focus();
 
-            showAlert("Thành công", `Thùng [${targetBoxId}] đã được lưu vào kệ [${fullBinLocation}].`, "✅");
+            showToast(`✅ ${targetBoxId} → ${fullBinLocation}`);
           } else if (res.isAlreadySaved) {
+            // Server có vị trí mới hơn (người khác vừa lưu) thì cập nhật lại máy
+            if (BOX_MAP[targetBoxId]) {
+              BOX_MAP[targetBoxId].bin = res.existingBin;
+              BOX_MAP[targetBoxId].operator = res.existingUser;
+            }
             showConfirm(
               "Cảnh báo trùng vị trí!",
               `Thùng này ĐÃ ĐƯỢC LÊN KỆ tại kệ [${res.existingBin}] bởi [${res.existingUser}].\n\nBạn có CHẮC CHẮN muốn đổi sang [${fullBinLocation}] không?`,
@@ -734,6 +760,22 @@
       localStorage.setItem("WAREHOUSE_OPERATOR", currentOperator);
       document.getElementById('dispCurrentOperator').innerText = currentOperator;
       document.getElementById('operatorModal').style.display = 'none';
+    }
+
+    let toastTimer = null;
+    function showToast(message) {
+      let toast = document.getElementById('toast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'toast';
+        toast.className = 'toast';
+        document.body.appendChild(toast);
+      }
+      toast.innerText = message;
+      toast.classList.add('show');
+      if (navigator.vibrate) navigator.vibrate(60);
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 2000);
     }
 
     let alertCallback = null;
