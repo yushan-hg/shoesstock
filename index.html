@@ -3,402 +3,396 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <title>Hệ Thống Lên Kệ Kho</title>
-  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+  <meta name="theme-color" content="#0b0d10">
+  <title>Lên Kệ Kho</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --primary: #007aff;
-      --primary-dark: #0056b3;
-      --success: #34c759;
-      --warning: #ff9500;
-      --danger: #ff3b30;
-      --bg: #f2f2f7;
-      --surface: #ffffff;
-      --text-main: #1c1c1e;
-      --text-sub: #8e8e93;
-      --border: #e5e5ea;
+      --bg: #0b0d10;
+      --surface: #14181d;
+      --surface-2: #1c2128;
+      --line: #2a313a;
+      --text: #f2f4f7;
+      --text-2: #a3adba;
+      --text-3: #6b7480;
+      --ok: #22c55e;
+      --ok-ink: #04230f;
+      --warn: #f5a524;
+      --warn-bg: rgba(245, 165, 36, 0.12);
+      --err: #ff6b5e;
+      --err-bg: rgba(240, 68, 56, 0.14);
+      --accent: #38bdf8;
+      --accent-ink: #04121b;
+      --accent-soft: rgba(56, 189, 248, 0.14);
+      --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --sans: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    /* Tầng 2 đổi toàn bộ màu nhấn để luôn biết mình đang ở tầng nào */
+    body[data-floor="2"] {
+      --accent: #c084fc;
+      --accent-ink: #1a0626;
+      --accent-soft: rgba(192, 132, 252, 0.15);
     }
 
-    * { 
-      box-sizing: border-box; 
-      -webkit-tap-highlight-color: transparent; 
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    [hidden] { display: none !important; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+    body { min-height: 100dvh; }
+    button { font-family: inherit; color: inherit; cursor: pointer; }
+    input { font-family: inherit; }
 
-    body {
-      margin: 0; padding: 14px 14px 28px 14px; background-color: var(--bg); color: var(--text-main);
-    }
+    .app { max-width: 520px; margin: 0 auto; padding: 0 16px calc(28px + env(safe-area-inset-bottom)); }
 
-    /* TOP BAR & ADMIN */
-    .top-bar {
-      display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
+    /* HEADER */
+    .hdr {
+      position: sticky; top: 0; z-index: 20;
+      display: flex; align-items: center; gap: 12px;
+      padding: calc(12px + env(safe-area-inset-top)) 0 12px;
+      background: linear-gradient(var(--bg) 80%, rgba(11, 13, 16, 0));
     }
-    .top-bar h1 {
-      margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.3px; color: var(--text-main);
+    .floor-chip {
+      border: none; border-radius: 14px; background: var(--accent); color: var(--accent-ink);
+      padding: 7px 12px; display: flex; flex-direction: column; align-items: flex-start; line-height: 1.1;
+      min-width: 64px; transition: background 0.2s;
     }
-    .btn-admin {
-      background: #e5e5ea; color: #3a3a3c; border: none; border-radius: 20px;
-      padding: 6px 14px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 4px;
-      cursor: pointer;
+    .floor-chip .n { font-size: 17px; font-weight: 800; }
+    .floor-chip .p { font-family: var(--mono); font-size: 11px; font-weight: 700; opacity: 0.75; }
+    .hdr-mid { flex: 1; min-width: 0; }
+    .hdr-op { font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sync { display: inline-flex; align-items: center; gap: 6px; border: none; background: none; padding: 2px 0; font-size: 12px; font-weight: 500; color: var(--text-2); }
+    .sync .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+    .sync[data-s="ok"] .dot { background: var(--ok); }
+    .sync[data-s="loading"] .dot { background: var(--warn); animation: blink 1s infinite; }
+    .sync[data-s="err"] { color: var(--err); }
+    .sync[data-s="err"] .dot { background: var(--err); }
+    @keyframes blink { 50% { opacity: 0.25; } }
+    .icon-btn {
+      width: 48px; height: 48px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface);
+      font-size: 20px; display: flex; align-items: center; justify-content: center;
     }
-    .btn-admin:active { background: #d1d1d6; }
+    .icon-btn:active { background: var(--surface-2); }
 
-    /* DASHBOARD CARD */
-    .dashboard-card {
-      background: var(--surface); border-radius: 14px; padding: 12px 14px;
-      margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border: 1px solid var(--border);
-      display: flex; flex-direction: column; gap: 10px;
-    }
-    .dash-row {
-      display: flex; justify-content: space-between; align-items: center;
-    }
-    .dash-meta {
-      display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500;
-    }
-    .dash-label { color: var(--text-sub); font-size: 13px; }
-    .dash-val { font-weight: 700; color: var(--text-main); }
-    .btn-mini-action {
-      background: #f2f2f7; color: var(--primary); border: 1px solid #d1d1d6;
-      border-radius: 8px; height: 32px; padding: 0 12px; font-size: 12px; font-weight: 600;
-      display: flex; align-items: center; justify-content: center; cursor: pointer;
-    }
-    .btn-mini-action:active { background: #e5e5ea; transform: scale(0.97); }
+    /* TIẾN ĐỘ */
+    .progress { height: 6px; border-radius: 6px; background: var(--surface-2); overflow: hidden; }
+    .progress-bar { height: 100%; width: 0; background: var(--accent); border-radius: 6px; transition: width 0.4s; }
+    .progress-label { display: flex; justify-content: space-between; margin: 6px 0 18px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+    .progress-label b { color: var(--text); }
 
-    .tag-area-f1 {
-      background: #e0f2fe; color: #0284c7; padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 12px;
-    }
-    .tag-area-f2 {
-      background: #fef3c7; color: #d97706; padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 12px;
-    }
+    .eyebrow { display: block; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-2); margin: 0 0 10px; }
 
-    /* CARD CONTAINER */
-    .card {
-      background: var(--surface); border-radius: 14px; padding: 14px;
-      margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border: 1px solid var(--border);
+    /* BƯỚC 1: QUÉT THÙNG */
+    .scan-field { position: relative; }
+    .scan-input {
+      width: 100%; height: 66px; padding: 0 56px 0 18px; border-radius: 18px;
+      border: 2px solid var(--line); background: var(--surface); color: var(--text);
+      font-family: var(--mono); font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; outline: none;
     }
-    .section-label {
-      font-size: 11px; font-weight: 700; color: var(--text-sub);
-      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: block;
+    .scan-input::placeholder { color: var(--text-3); font-family: var(--sans); font-size: 16px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+    .scan-input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+    .clear-btn {
+      position: absolute; right: 9px; top: 9px; width: 48px; height: 48px; border-radius: 12px;
+      border: none; background: var(--surface-2); color: var(--text-2); font-size: 22px;
     }
+    .hint { margin-top: 12px; padding: 12px 14px; border-radius: 12px; font-size: 14px; font-weight: 600; line-height: 1.45; background: var(--surface); color: var(--text-2); }
+    .hint.err { background: var(--err-bg); color: var(--err); }
+    .shake { animation: shake 0.35s; }
+    @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
 
-    /* SEARCH WRAPPER */
-    .search-wrap { display: flex; gap: 8px; }
-    .search-box {
-      flex: 1; height: 48px; font-size: 16px; font-weight: 600; padding: 0 14px;
-      border: 1.5px solid var(--border); border-radius: 10px; text-transform: uppercase;
-      outline: none; background: #fafafa;
+    .results { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+    .row {
+      width: 100%; text-align: left; display: flex; align-items: center; gap: 12px;
+      padding: 14px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface);
     }
-    .search-box:focus { border-color: var(--primary); background: #ffffff; }
-    .btn-search-exec {
-      background: var(--primary); color: white; border: none; border-radius: 10px;
-      padding: 0 18px; font-size: 15px; font-weight: 600; cursor: pointer;
-    }
-    .btn-search-exec:active { background: var(--primary-dark); }
+    .row:active { background: var(--surface-2); border-color: var(--accent); }
+    .row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .row-id { font-family: var(--mono); font-size: 17px; font-weight: 700; color: var(--text); word-break: break-all; }
+    .row-id mark { background: var(--accent-soft); color: var(--accent); border-radius: 4px; padding: 0 1px; }
+    .row-meta { font-size: 13px; color: var(--text-2); }
+    .more { text-align: center; font-size: 13px; color: var(--text-3); padding: 6px; }
 
-    /* MATCH LIST ITEMS */
-    .match-card {
-      background: #ffffff; border: 1.5px solid var(--border); border-radius: 12px;
-      padding: 12px 14px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 8px;
-      cursor: pointer;
-    }
-    .match-card:active { background: #f2f2f7; border-color: var(--primary); }
-    .match-line-1 {
-      display: flex; justify-content: space-between; align-items: center;
-    }
-    .match-box-title {
-      font-size: 16px; font-weight: 700; color: var(--primary); letter-spacing: 0.3px;
-    }
-    .match-line-2 {
-      display: flex; justify-content: space-between; align-items: center; font-size: 13px;
-    }
-    .inbound-chip {
-      background: #f2f2f7; color: #48484a; padding: 2px 8px; border-radius: 5px;
-      font-size: 12px; font-weight: 600;
-    }
-    .qty-indicator { font-weight: 600; color: var(--text-main); margin-left: 6px; }
-    .operator-stamp {
-      font-size: 12px; color: var(--text-sub); font-weight: 500; display: flex; align-items: center; gap: 4px;
-    }
+    .pill { flex-shrink: 0; padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .pill-empty { border: 1px solid var(--line); color: var(--text-2); }
+    .pill-done { background: rgba(34, 197, 94, 0.14); color: var(--ok); font-family: var(--mono); }
 
-    /* BADGES */
-    .shelf-badge {
-      padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; white-space: nowrap;
+    .recent { margin-top: 26px; }
+    .recent-row {
+      width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 2px;
+      border: none; border-bottom: 1px solid var(--line); background: none; text-align: left;
     }
-    .badge-done { background: #dcfce7; color: #15803d; }
-    .badge-empty { background: #f2f2f7; color: #8e8e93; }
+    .recent-row .id { font-family: var(--mono); font-size: 14px; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .recent-row .bin { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--ok); }
+    .recent-row .t { font-size: 12px; color: var(--text-3); width: 44px; text-align: right; }
 
-    /* DETAIL SUMMARY */
-    .detail-grid {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
+    /* BƯỚC 2: THÙNG + KỆ */
+    .back {
+      border: none; background: none; padding: 6px 0; margin-bottom: 10px;
+      font-size: 15px; font-weight: 600; color: var(--accent);
     }
-    .grid-cell { display: flex; flex-direction: column; }
-    .cell-title { font-size: 11px; font-weight: 700; color: var(--text-sub); text-transform: uppercase; }
-    .cell-data { font-size: 15px; font-weight: 700; color: var(--text-main); margin-top: 2px; }
+    .box-card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 14px 16px 6px; }
+    .box-id { font-family: var(--mono); font-size: 24px; font-weight: 800; letter-spacing: 0.02em; word-break: break-all; }
+    .box-meta { margin-top: 6px; font-size: 14px; color: var(--text-2); }
+    .box-meta b { color: var(--text); font-weight: 700; }
 
-    /* SKUS CONTAINER */
-    .sku-list {
-      max-height: 140px; overflow-y: auto; margin-top: 10px; border: 1px solid var(--border);
-      border-radius: 8px; background: #fafafa;
-    }
-    .sku-item {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 13px;
-    }
-    .sku-item:last-child { border-bottom: none; }
-    .sku-name { font-weight: 600; }
-    .sku-qty { font-weight: 700; }
+    .state { margin-top: 14px; border-radius: 14px; padding: 12px 14px; }
+    .state-label { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+    .state-empty { display: inline-block; margin-top: 10px; padding: 6px 12px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
+    .state-done { background: var(--warn-bg); border: 1px solid rgba(245, 165, 36, 0.35); }
+    .state-done .state-label { color: var(--warn); }
+    .state-bin { font-family: var(--mono); font-size: 32px; font-weight: 800; margin: 4px 0 2px; color: var(--text); }
+    .state-meta { font-size: 13px; color: var(--text-2); }
+    .state-note { margin-top: 8px; font-size: 13px; font-weight: 600; color: var(--warn); }
 
-    /* BANNERS */
-    .banner-box {
-      border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; text-align: center;
-      font-size: 13px; font-weight: 600; line-height: 1.4; display: none;
-    }
-    .banner-warning { background: #fef3c7; border: 1.5px solid #f59e0b; color: #92400e; }
-    .banner-old-bin { display: block; font-size: 22px; font-weight: 800; letter-spacing: 1px; margin: 4px 0; color: #78350f; }
+    .skus { margin-top: 4px; }
+    .skus summary { list-style: none; padding: 8px 0; font-size: 14px; font-weight: 600; color: var(--accent); }
+    .skus summary::-webkit-details-marker { display: none; }
+    .skus summary::after { content: " ▾"; }
+    .skus[open] summary::after { content: " ▴"; }
+    .sku-list { max-height: 180px; overflow-y: auto; border-top: 1px solid var(--line); }
+    .sku { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+    .sku span { font-family: var(--mono); font-weight: 600; }
+    .sku b { font-weight: 700; }
 
-    /* GỢI Ý TÌM KIẾM */
-    .search-hint {
-      display: none; margin-top: 8px; font-size: 13px; font-weight: 600; color: var(--danger);
+    .ghost-btn {
+      width: 100%; height: 56px; margin-top: 14px; border-radius: 16px;
+      border: 1.5px dashed var(--line); background: none; font-size: 16px; font-weight: 700; color: var(--text-2);
     }
+    .ghost-btn:active { border-color: var(--accent); color: var(--accent); }
 
-    /* TOAST */
-    .toast {
-      position: fixed; left: 14px; right: 14px; bottom: calc(18px + env(safe-area-inset-bottom));
-      z-index: 99998; padding: 14px 16px; border-radius: 12px;
-      background: #15803d; color: #ffffff; font-size: 15px; font-weight: 700; text-align: center;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.25);
-      opacity: 0; transform: translateY(20px); pointer-events: none;
-      transition: opacity 0.2s, transform 0.2s;
+    .bin-panel { margin-top: 18px; }
+    .slots { display: flex; align-items: stretch; gap: 6px; }
+    .slot-pre {
+      display: flex; align-items: center; padding: 0 12px; border-radius: 14px;
+      background: var(--accent); color: var(--accent-ink); font-family: var(--mono); font-size: 22px; font-weight: 800;
     }
-    .toast.show { opacity: 1; transform: translateY(0); }
+    .slot {
+      flex: 1; min-width: 0; height: 58px; border-radius: 14px; border: 2px solid var(--line); background: var(--surface);
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono); font-size: 30px; font-weight: 800;
+    }
+    .slot.gap { margin-left: 8px; }
+    .slot.filled { border-color: var(--text-3); }
+    .slot.current { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+    .slot.current::after { content: ""; width: 2px; height: 30px; background: var(--accent); animation: blink 1s infinite; }
+    .slot-help { margin-top: 8px; font-size: 13px; color: var(--text-3); }
 
-    /* SHELF LOCATION INPUT 6 DIGITS */
-    .shelf-input-container {
-      display: flex; align-items: center; height: 50px; border: 1.5px solid var(--border);
-      border-radius: 12px; overflow: hidden; background: #ffffff;
+    .keypad { margin-top: 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .key {
+      height: 54px; border-radius: 16px; border: none; background: var(--surface-2);
+      font-family: var(--mono); font-size: 26px; font-weight: 700;
+      transition: transform 0.06s;
     }
-    .shelf-input-container:focus-within { border-color: var(--primary); }
-    .fixed-prefix {
-      background: #f2f2f7; color: var(--primary); font-size: 17px; font-weight: 700;
-      padding: 0 16px; height: 100%; display: flex; align-items: center;
-      border-right: 1.5px solid var(--border);
-    }
-    .six-digit-field {
-      flex: 1; height: 100%; border: none !important; outline: none; font-size: 20px !important;
-      font-weight: 700; letter-spacing: 3px; padding: 0 14px; color: var(--text-main);
-    }
-    .preview-line {
-      display: flex; justify-content: space-between; align-items: center;
-      margin-top: 6px; font-size: 12px; color: var(--text-sub); font-weight: 600;
-    }
-    .preview-line strong { color: var(--primary); font-size: 14px; font-weight: 700; }
+    .key:active { transform: scale(0.96); background: var(--accent-soft); }
+    .key.fn { font-family: var(--sans); font-size: 15px; font-weight: 700; color: var(--text-2); background: var(--surface); border: 1px solid var(--line); }
 
-    .btn-confirm-shelf {
-      background: var(--warning); color: #ffffff; width: 100%; height: 48px;
-      border: none; border-radius: 12px; font-size: 16px; font-weight: 700;
-      margin-top: 10px; box-shadow: 0 2px 8px rgba(255,149,0,0.3); cursor: pointer;
+    .cta {
+      width: 100%; height: 64px; margin-top: 12px; border: none; border-radius: 18px;
+      background: var(--accent); color: var(--accent-ink); font-size: 18px; font-weight: 800; letter-spacing: 0.01em;
     }
-    .btn-confirm-shelf:active { background: #e08500; transform: scale(0.98); }
+    .cta:active { filter: brightness(0.92); }
+    /* Màn hình cao thì phím to hơn */
+    @media (min-height: 760px) {
+      .slot { height: 66px; }
+      .key { height: 62px; }
+    }
+    /* Nút lưu luôn nằm trong tầm tay, kể cả điện thoại màn ngắn */
+    .bin-panel .cta { position: sticky; bottom: calc(10px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 24px var(--bg); }
+    .cta:disabled { background: var(--surface-2); color: var(--text-3); }
+    .cta.busy { opacity: 0.7; }
 
-    /* MODALS */
-    .modal-overlay {
-      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0, 0, 0, 0.45); z-index: 99999;
-      align-items: center; justify-content: center; padding: 20px;
+    /* LỚP PHỦ: HỘP THOẠI, MENU, THIẾT LẬP, THÀNH CÔNG */
+    .overlay {
+      position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.6);
+      display: flex; align-items: center; justify-content: center; padding: 20px;
     }
-    .modal-card {
-      background: #ffffff; width: 100%; max-width: 320px; border-radius: 18px;
-      padding: 22px 18px; text-align: center; box-shadow: 0 12px 30px rgba(0,0,0,0.2);
-      animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    .dlg {
+      width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--line);
+      border-radius: 22px; padding: 22px 18px 18px; text-align: center; animation: pop 0.18s ease-out;
     }
-    @keyframes popIn {
-      from { opacity: 0; transform: scale(0.9); }
-      to { opacity: 1; transform: scale(1); }
+    @keyframes pop { from { transform: scale(0.94); opacity: 0; } }
+    .dlg-icon { font-size: 34px; }
+    .dlg h2 { margin: 8px 0 6px; font-size: 19px; font-weight: 800; }
+    .dlg-body { font-size: 15px; line-height: 1.5; color: var(--text-2); }
+    .dlg-input {
+      width: 100%; height: 54px; margin-top: 14px; border-radius: 14px; border: 2px solid var(--line);
+      background: var(--bg); color: var(--text); text-align: center; font-size: 20px; font-weight: 700; outline: none;
     }
-    .modal-icon { font-size: 34px; margin-bottom: 8px; }
-    .modal-head { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
-    .modal-body { font-size: 14px; color: #48484a; margin-bottom: 18px; line-height: 1.4; }
-    .modal-actions { display: flex; gap: 8px; }
-    .modal-btn {
-      flex: 1; height: 42px; border-radius: 10px; border: none; font-size: 14px; font-weight: 600; cursor: pointer;
-    }
-    .btn-m-cancel { background: #e5e5ea; color: #1c1c1e; }
-    .btn-m-confirm { background: var(--primary); color: #ffffff; }
+    .dlg-input:focus { border-color: var(--accent); }
+    .dlg-actions { display: flex; gap: 8px; margin-top: 18px; }
+    .btn { flex: 1; height: 52px; border-radius: 14px; border: none; font-size: 16px; font-weight: 700; }
+    .btn-primary { background: var(--accent); color: var(--accent-ink); }
+    .btn-danger { background: var(--warn); color: #241500; }
+    .btn-ghost { background: var(--surface-2); color: var(--text); }
 
-    .floor-choice-btn {
-      width: 100%; height: 52px; border-radius: 12px; font-size: 16px; font-weight: 700;
-      margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;
-      padding: 0 16px; border: 2px solid transparent; cursor: pointer;
+    .sheet-wrap { align-items: flex-end; padding: 0; }
+    .sheet {
+      width: 100%; max-width: 520px; background: var(--surface); border-radius: 24px 24px 0 0;
+      border: 1px solid var(--line); border-bottom: none;
+      padding: 10px 16px calc(18px + env(safe-area-inset-bottom)); animation: up 0.2s ease-out;
     }
-    .choice-f1 { background: #e0f2fe; color: #0284c7; border-color: #0284c7; }
-    .choice-f2 { background: #fef3c7; color: #d97706; border-color: #d97706; }
+    @keyframes up { from { transform: translateY(40px); opacity: 0; } }
+    .grabber { width: 40px; height: 5px; border-radius: 5px; background: var(--line); margin: 0 auto 12px; }
+    .sheet-title { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); margin: 14px 4px 6px; }
+    .menu-item {
+      width: 100%; display: flex; align-items: center; gap: 14px; padding: 14px 6px;
+      border: none; background: none; text-align: left; border-radius: 12px;
+    }
+    .menu-item:active { background: var(--surface-2); }
+    .menu-item .ic { width: 40px; height: 40px; border-radius: 12px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    .menu-item .tx { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+    .menu-item .tx b { font-size: 16px; font-weight: 700; }
+    .menu-item .tx small { font-size: 13px; color: var(--text-2); }
 
-    /* ADMIN PANEL */
-    #adminPanel { display: none; background: #eef2ff; border: 1.5px dashed #4f46e5; }
-    .admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
-    .btn-admin-task {
-      height: 40px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
-      color: white; cursor: pointer;
+    .setup {
+      position: fixed; inset: 0; z-index: 40; background: var(--bg); overflow-y: auto;
+      padding: calc(28px + env(safe-area-inset-top)) 20px calc(28px + env(safe-area-inset-bottom));
     }
+    .setup-in { max-width: 440px; margin: 0 auto; }
+    .brand { font-size: 13px; font-weight: 800; letter-spacing: 0.16em; color: var(--accent); }
+    .setup h1 { margin: 8px 0 28px; font-size: 30px; line-height: 1.2; font-weight: 800; }
+    .setup .eyebrow { margin-top: 22px; }
+    .setup-name {
+      width: 100%; height: 62px; padding: 0 18px; border-radius: 16px; border: 2px solid var(--line);
+      background: var(--surface); color: var(--text); font-size: 20px; font-weight: 700; text-transform: uppercase; outline: none;
+    }
+    .setup-name:focus { border-color: var(--accent); }
+    .floor-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .floor-card {
+      height: 112px; border-radius: 18px; border: 2px solid var(--line); background: var(--surface);
+      display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; padding: 14px;
+    }
+    .floor-card .fn { font-size: 22px; font-weight: 800; }
+    .floor-card .fp { font-family: var(--mono); font-size: 15px; font-weight: 700; color: var(--text-2); }
+    .floor-card[data-f="1"].on { border-color: #38bdf8; background: rgba(56, 189, 248, 0.12); }
+    .floor-card[data-f="2"].on { border-color: #c084fc; background: rgba(192, 132, 252, 0.13); }
+    .floor-card.on .fp { color: var(--text); }
+    .setup .cta { margin-top: 30px; }
+    .setup-cancel { width: 100%; margin-top: 10px; height: 50px; border: none; background: none; color: var(--text-2); font-size: 15px; font-weight: 600; }
+
+    .flash {
+      position: fixed; inset: 0; z-index: 60; background: var(--ok); color: var(--ok-ink);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+      animation: flashIn 0.18s ease-out; text-align: center; padding: 20px;
+    }
+    @keyframes flashIn { from { opacity: 0; } }
+    .flash-check { width: 92px; height: 92px; border-radius: 50%; background: var(--ok-ink); color: var(--ok); display: flex; align-items: center; justify-content: center; font-size: 52px; font-weight: 800; margin-bottom: 14px; }
+    .flash-box { font-family: var(--mono); font-size: 20px; font-weight: 700; word-break: break-all; }
+    .flash-arrow { font-size: 22px; font-weight: 800; opacity: 0.6; }
+    .flash-bin { font-family: var(--mono); font-size: 40px; font-weight: 800; }
   </style>
 </head>
-<body>
+<body data-floor="1">
 
-  <!-- TOP HEADER -->
-  <div class="top-bar">
-    <h1>KHO LÊN KỆ</h1>
-    <button class="btn-admin" id="btnAdminToggle" onclick="openAdminModal()">⚙️ Admin</button>
-  </div>
-
-  <!-- DASHBOARD BAR -->
-  <div class="dashboard-card">
-    <div class="dash-row">
-      <div class="dash-meta">
-        <span class="dash-label">Nhân viên:</span>
-        <span class="dash-val" id="dispCurrentOperator">Chưa nhập</span>
-      </div>
-      <button class="btn-mini-action" onclick="promptChangeOperator()">Đổi tên</button>
-    </div>
-    <div class="dash-row">
-      <div class="dash-meta">
-        <span class="dash-label">Khu vực:</span>
-        <span id="dispCurrentArea" class="tag-area-f1">TẦNG 1</span>
-        <span id="syncStatus" style="font-size: 11px; font-weight: 700; color: var(--success);">⚡ Sẵn sàng</span>
-      </div>
-      <button class="btn-mini-action" onclick="openAreaSelectModal()">Đổi tầng</button>
-    </div>
-  </div>
-
-  <!-- ADMIN DRAWER -->
-  <div class="card" id="adminPanel">
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-      <span style="color: #4f46e5; font-size: 12px; font-weight: 700;">QUẢN TRỊ VIÊN</span>
-      <span style="font-size: 12px; color: var(--danger); font-weight: 700; cursor: pointer;" onclick="lockAdmin()">[Đóng]</span>
-    </div>
-    <div class="admin-grid">
-      <input type="file" id="fileUploader" accept=".xlsx, .xls" style="display: none;" onchange="handleExcelUpload(event)">
-      <button class="btn-admin-task" style="background: #6366f1;" id="btnImportText" onclick="document.getElementById('fileUploader').click()">📥 Nạp File Mới</button>
-      <button class="btn-admin-task" style="background: var(--success);" id="btnExportText" onclick="exportCompletedFile()">📤 Xuất File Xong</button>
-    </div>
-  </div>
-
-  <!-- 1. TÌM KIẾM THÙNG -->
-  <div class="card">
-    <span class="section-label">1. Tìm Kiếm Thùng Hàng</span>
-    <div class="search-wrap">
-      <input type="text" id="boxIdInput" class="search-box" placeholder="Nhập mã thùng (VD: A12, A49...)" oninput="onBoxInputSearch(false)" onkeydown="if(event.key==='Enter') onBoxInputSearch(true)" autofocus>
-      <button class="btn-search-exec" onclick="onBoxInputSearch(true)">Tìm</button>
-    </div>
-    <div class="search-hint" id="searchHint"></div>
-  </div>
-
-  <!-- DANH SÁCH THÙNG TÌM THẤY (CHỐNG VỠ DÒNG) -->
-  <div class="card" id="matchListCard" style="display: none; padding: 10px;">
-    <span class="section-label" style="color: var(--warning); margin-bottom: 6px;">Chọn đúng thùng bạn đang cầm:</span>
-    <div id="matchesContainer"></div>
-  </div>
-
-  <!-- THÔNG TIN CHI TIẾT THÙNG -->
-  <div class="card" id="boxDetails" style="display: none;">
-    <div class="banner-box banner-warning" id="conflictBanner"></div>
-
-    <div class="detail-grid">
-      <div class="grid-cell">
-        <span class="cell-title">Mã Thùng</span>
-        <span class="cell-data" id="dispBoxId" style="color: var(--primary);"></span>
-      </div>
-      <div class="grid-cell">
-        <span class="cell-title">Vị Trí Hiện Tại</span>
-        <span class="cell-data" id="dispCurrentBin">Chưa lên kệ</span>
-      </div>
-      <div class="grid-cell">
-        <span class="cell-title">Đơn Nhập</span>
-        <span class="cell-data" id="dispInbound" style="font-size: 14px;"></span>
-      </div>
-      <div class="grid-cell">
-        <span class="cell-title">Tổng Hàng</span>
-        <span class="cell-data"><span id="dispTotalQty"></span> hộp (<span id="dispSkuCount"></span> mã)</span>
-      </div>
-    </div>
-
-    <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
-      <span class="section-label" style="margin-bottom: 0;">Danh Sách Mã Trong Thùng:</span>
-      <span id="dispOperatorTime" style="font-size: 11px; color: var(--text-sub); font-weight: 600;"></span>
-    </div>
-    <div class="sku-list" id="itemsList"></div>
-  </div>
-
-  <!-- 2. NHẬP VỊ TRÍ KỆ 6 SỐ -->
-  <div class="card" id="shelfSection" style="display: none;">
-    <span class="section-label">2. Nhập Vị Trí Kệ (Nhập đúng 6 số)</span>
-    <div class="shelf-input-container">
-      <div class="fixed-prefix" id="shelfPrefixDisp">S10</div>
-      <input type="text" id="binSuffixInput" class="six-digit-field" placeholder="000000" maxlength="6" inputmode="numeric" oninput="updateShelfPreview()" onkeydown="if(event.key==='Enter') submitShelfLocation(false)">
-    </div>
-    <div class="preview-line">
-      <span>Vị trí đầy đủ sẽ lưu:</span>
-      <strong id="shelfFullPreview">S10------</strong>
-    </div>
-    <button class="btn-confirm-shelf" id="btnSubmitShelf" onclick="submitShelfLocation(false)">XÁC NHẬN LÊN KỆ</button>
-  </div>
-
-  <!-- MODAL: ĐỔI TẦNG -->
-  <div id="areaSelectModal" class="modal-overlay">
-    <div class="modal-card">
-      <div class="modal-icon">🏢</div>
-      <div class="modal-head">Chọn Tầng Làm Việc</div>
-      <div class="modal-body">Hệ thống sẽ tự động gán mã tiền tố tương ứng khi bạn nhập kệ:</div>
-      <button class="floor-choice-btn choice-f1" onclick="selectArea(1)">
-        <span>TẦNG 1</span>
-        <span>Vị trí S10 ➔</span>
+  <div class="app">
+    <header class="hdr">
+      <button class="floor-chip" onclick="openSetup()" aria-label="Đổi tầng">
+        <span class="n" id="floorNum">—</span>
+        <span class="p" id="floorPre">S10</span>
       </button>
-      <button class="floor-choice-btn choice-f2" onclick="selectArea(2)">
-        <span>TẦNG 2</span>
-        <span>Vị trí S15 ➔</span>
-      </button>
-    </div>
-  </div>
-
-  <!-- MODAL: ĐỔI TÊN NHÂN VIÊN -->
-  <div id="operatorModal" class="modal-overlay">
-    <div class="modal-card">
-      <div class="modal-icon">👤</div>
-      <div class="modal-head">Định Danh Nhân Viên</div>
-      <div class="modal-body">Nhập Tên hoặc Mã nhân viên để hệ thống ghi vết người lên kệ:</div>
-      <input type="text" id="operatorNameInput" placeholder="VD: HOÀNG, SƠN, NV01..." style="width: 100%; height: 44px; text-align: center; font-size: 16px; font-weight: 700; border: 1.5px solid var(--border); border-radius: 8px; margin-bottom: 14px; outline: none; text-transform: uppercase;" onkeydown="if(event.key==='Enter') saveOperatorName()">
-      <div class="modal-actions">
-        <button class="modal-btn btn-m-confirm" onclick="saveOperatorName()">Xác nhận</button>
+      <div class="hdr-mid">
+        <div class="hdr-op" id="hdrOp">Chưa nhập tên</div>
+        <button class="sync" id="sync" data-s="loading" onclick="loadData()">
+          <span class="dot"></span><span id="syncText">Đang tải dữ liệu…</span>
+        </button>
       </div>
-    </div>
-  </div>
+      <button class="icon-btn" onclick="openMenu()" aria-label="Menu">☰</button>
+    </header>
 
-  <!-- MODAL: ADMIN PIN -->
-  <div id="adminModal" class="modal-overlay">
-    <div class="modal-card">
-      <div class="modal-icon">🔐</div>
-      <div class="modal-head">Xác Thực Admin</div>
-      <div class="modal-body">Nhập mã PIN để mở tính năng nạp & xuất file:</div>
-      <input type="password" id="adminPinInput" placeholder="Nhập PIN" style="width: 100%; height: 44px; text-align: center; font-size: 18px; font-weight: 700; border: 1.5px solid var(--border); border-radius: 8px; margin-bottom: 14px; outline: none;" onkeydown="if(event.key==='Enter') checkAdminPin()">
-      <div class="modal-actions">
-        <button class="modal-btn btn-m-cancel" onclick="closeAdminModal()">Hủy</button>
-        <button class="modal-btn btn-m-confirm" onclick="checkAdminPin()">Mở khóa</button>
+    <div class="progress"><div class="progress-bar" id="progBar"></div></div>
+    <div class="progress-label"><span id="progText">—</span><span id="progPct"></span></div>
+
+    <!-- BƯỚC 1: QUÉT / NHẬP MÃ THÙNG -->
+    <section id="viewScan">
+      <label class="eyebrow" for="boxInput">Bước 1 · Mã thùng</label>
+      <div class="scan-field">
+        <input id="boxInput" class="scan-input" type="text" placeholder="Quét hoặc gõ vài ký tự cuối…"
+               autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="search">
+        <button class="clear-btn" id="clearBtn" onclick="backToScan()" aria-label="Xoá" hidden>×</button>
       </div>
+      <div class="hint" id="scanHint" hidden></div>
+      <div class="results" id="results"></div>
+      <div class="recent" id="recentWrap" hidden>
+        <span class="eyebrow">Vừa lưu</span>
+        <div id="recentList"></div>
+      </div>
+    </section>
+
+    <!-- BƯỚC 2: THÔNG TIN THÙNG + NHẬP KỆ -->
+    <section id="viewBox" hidden>
+      <button class="back" onclick="backToScan()">‹ Chọn thùng khác</button>
+      <div class="box-card">
+        <div class="box-id" id="bxId"></div>
+        <div class="box-meta"><span id="bxInbound"></span> · <b id="bxQty"></b></div>
+        <div class="state" id="bxState"></div>
+        <details class="skus" id="skuDetails">
+          <summary>Xem <span id="bxSkuCount"></span> mã hàng trong thùng</summary>
+          <div class="sku-list" id="bxSkus"></div>
+        </details>
+      </div>
+
+      <button class="ghost-btn" id="btnMove" onclick="startMove()" hidden>Chuyển sang kệ khác</button>
+
+      <div class="bin-panel" id="binPanel">
+        <span class="eyebrow" id="binLabel">Bước 2 · Vị trí kệ</span>
+        <div class="slots" id="slots"></div>
+        <div class="slot-help">Nhập 6 số trên nhãn kệ, hoặc quét mã kệ</div>
+        <div class="keypad" id="keypad"></div>
+        <button class="cta" id="btnSave" onclick="save(false)" disabled>Nhập đủ 6 số</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- THIẾT LẬP: TÊN + TẦNG -->
+  <div class="setup" id="setup" hidden>
+    <div class="setup-in">
+      <div class="brand">KHO · LÊN KỆ</div>
+      <h1>Bắt đầu ca làm việc</h1>
+      <label class="eyebrow" for="setupName">Tên hoặc mã nhân viên</label>
+      <input id="setupName" class="setup-name" type="text" placeholder="VD: SƠN, NV01" autocomplete="off" autocorrect="off" spellcheck="false">
+      <span class="eyebrow">Khu vực làm việc</span>
+      <div class="floor-cards">
+        <button class="floor-card" data-f="1" onclick="pickFloor(1)"><span class="fn">Tầng 1</span><span class="fp">S10······</span></button>
+        <button class="floor-card" data-f="2" onclick="pickFloor(2)"><span class="fn">Tầng 2</span><span class="fp">S15······</span></button>
+      </div>
+      <button class="cta" id="setupGo" onclick="saveSetup()" disabled>Bắt đầu</button>
+      <button class="setup-cancel" id="setupCancel" onclick="closeSetup()" hidden>Huỷ</button>
     </div>
   </div>
 
-  <!-- MODAL: ALERT & CONFIRM DIALOG -->
-  <div id="customAlertModal" class="modal-overlay">
-    <div class="modal-card">
-      <div class="modal-icon" id="customAlertIcon">ℹ️</div>
-      <div class="modal-head" id="customAlertTitle">Thông Báo</div>
-      <div class="modal-body" id="customAlertMessage"></div>
-      <div class="modal-actions" id="customAlertButtons"></div>
+  <!-- MENU -->
+  <div class="overlay sheet-wrap" id="menu" hidden onclick="if (event.target === this) closeMenu()">
+    <div class="sheet">
+      <div class="grabber"></div>
+      <div id="menuBody"></div>
     </div>
   </div>
+
+  <!-- HỘP THOẠI -->
+  <div class="overlay" id="dlg" hidden>
+    <div class="dlg">
+      <div class="dlg-icon" id="dlgIcon"></div>
+      <h2 id="dlgTitle"></h2>
+      <div class="dlg-body" id="dlgBody"></div>
+      <input class="dlg-input" id="dlgInput" hidden>
+      <div class="dlg-actions" id="dlgActions"></div>
+    </div>
+  </div>
+
+  <!-- LƯU THÀNH CÔNG -->
+  <div class="flash" id="flash" hidden onclick="hideFlash()">
+    <div class="flash-check">✓</div>
+    <div class="flash-box" id="flashBox"></div>
+    <div class="flash-arrow">↓</div>
+    <div class="flash-bin" id="flashBin"></div>
+  </div>
+
+  <input type="file" id="fileInput" accept=".xlsx, .xls" hidden onchange="handleExcelUpload(event)">
 
   <script>
     // Dán URL Web App của Apps Script (kết thúc bằng /exec) vào đây
     const API_URL = "https://script.google.com/macros/s/AKfycbxuwQMfw-qKAwutV8hOkDbmUa1zbR3XGbYfS9e-GjAJ9hvkp5Yrg2eWg4ubjQEM2lxh/exec";
+    const EXCELJS_URL = "https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js";
 
     // Gửi request tới Apps Script. Dùng text/plain để tránh lỗi CORS preflight.
     async function callApi(action, data = {}) {
@@ -411,487 +405,556 @@
       return res.json();
     }
 
-    let adminPin = "";
-    let isAdminUnlocked = false;
-    let currentOperator = localStorage.getItem("WAREHOUSE_OPERATOR") || "";
-    let savedFloor = localStorage.getItem("WAREHOUSE_FLOOR");
-    let currentFloor = savedFloor ? parseInt(savedFloor, 10) : null;
-
-    let WAREHOUSE_CACHE = [];
-    let BOX_MAP = {};
-
-    window.onload = function() {
-      if (!currentOperator) {
-        promptChangeOperator();
-      } else {
-        document.getElementById('dispCurrentOperator').innerText = currentOperator;
-      }
-
-      if (!currentFloor) {
-        openAreaSelectModal();
-      } else {
-        applyAreaUI(currentFloor);
-      }
-
-      loadWarehouseDataFromCloud();
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const vibrate = (p) => { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} };
+    const store = {
+      get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
     };
+    const clock = (t) => { const d = t ? new Date(t) : new Date(); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
 
-    function openAreaSelectModal() {
-      document.getElementById('areaSelectModal').style.display = 'flex';
-    }
+    let operator = store.get("WAREHOUSE_OPERATOR") || "";
+    let floor = parseInt(store.get("WAREHOUSE_FLOOR"), 10) || null;
+    let BOX_MAP = {};
+    let BOX_LIST = [];
+    let selectedId = "";
+    let digits = "";
+    let scanPrefix = "";   // đang nhận mã kệ quét bằng súng, dạng S15xxxxxx
+    let adminPin = "";
+    let lastLoadAt = 0;
+    let loading = false;
+    const recent = [];
 
-    function selectArea(floor) {
-      currentFloor = floor;
-      localStorage.setItem("WAREHOUSE_FLOOR", floor);
-      applyAreaUI(floor);
-      document.getElementById('areaSelectModal').style.display = 'none';
-      const input = document.getElementById('boxIdInput');
-      if (input) input.focus();
-    }
+    const prefix = () => (floor === 1 ? "S10" : "S15");
 
-    function applyAreaUI(floor) {
-      const badge = document.getElementById('dispCurrentArea');
-      const prefixDisp = document.getElementById('shelfPrefixDisp');
-      if (floor === 1) {
-        badge.innerText = "TẦNG 1";
-        badge.className = "tag-area-f1";
-        prefixDisp.innerText = "S10";
-      } else {
-        badge.innerText = "TẦNG 2";
-        badge.className = "tag-area-f2";
-        prefixDisp.innerText = "S15";
-      }
-      updateShelfPreview();
-    }
-
-    function updateShelfPreview() {
-      const prefix = currentFloor === 1 ? "S10" : "S15";
-      const suffix = document.getElementById('binSuffixInput').value.trim().toUpperCase();
-      const preview = document.getElementById('shelfFullPreview');
-      preview.innerText = suffix ? (prefix + suffix) : (prefix + "------");
-    }
-
-    function loadWarehouseDataFromCloud(onLoaded = null) {
-      const syncStatus = document.getElementById('syncStatus');
-      syncStatus.innerText = "⏳ Đang nạp...";
-      syncStatus.style.color = "var(--warning)";
-
-      callApi("load").then(function(res) {
-        if (res.success) {
-          buildCache(res.items);
-          syncStatus.innerText = `⚡ (${res.items.length} dòng)`;
-          syncStatus.style.color = "var(--success)";
-          if (typeof onLoaded === "function") onLoaded();
-        } else {
-          syncStatus.innerText = "❌ Lỗi nạp";
-          syncStatus.style.color = "var(--danger)";
-        }
-      }).catch(function() {
-        syncStatus.innerText = "❌ Lỗi kết nối";
-        syncStatus.style.color = "var(--danger)";
+    document.addEventListener("DOMContentLoaded", function() {
+      buildKeypad();
+      applyFloor();
+      renderOperator();
+      $("boxInput").addEventListener("input", () => search(false));
+      $("boxInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); search(true); } });
+      $("setupName").addEventListener("input", renderSetup);
+      $("setupName").addEventListener("keydown", (e) => { if (e.key === "Enter") saveSetup(); });
+      document.addEventListener("keydown", onGlobalKey);
+      // Quay lại app sau một lúc thì tự lấy dữ liệu mới (người khác có thể đã lên kệ)
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && Date.now() - lastLoadAt > 120000) loadData(true);
       });
+
+      if (!operator || !floor) openSetup();
+      else $("boxInput").focus();
+      loadData();
+    });
+
+    // ---------- DỮ LIỆU ----------
+    function loadData(silent) {
+      if (loading) return;
+      loading = true;
+      setSync("loading", silent ? "Đang cập nhật…" : "Đang tải dữ liệu…");
+      callApi("load")
+        .then((res) => {
+          if (!res.success) throw new Error(res.message || "Lỗi tải dữ liệu");
+          buildCache(res.items);
+          lastLoadAt = Date.now();
+          setSync("ok", `${res.items.length} dòng · cập nhật ${clock()}`);
+          renderProgress();
+          if (!$("viewScan").hidden && $("boxInput").value.trim()) search(false);
+        })
+        .catch(() => setSync("err", "Mất kết nối · chạm để thử lại"))
+        .finally(() => { loading = false; });
+    }
+
+    function setSync(state, text) {
+      $("sync").dataset.s = state;
+      $("syncText").textContent = text;
     }
 
     function buildCache(rawItems) {
-      WAREHOUSE_CACHE = rawItems;
       BOX_MAP = {};
-
-      for (let i = 0; i < rawItems.length; i++) {
-        const item = rawItems[i];
-        const bId = item.boxId;
-        if (!BOX_MAP[bId]) {
-          BOX_MAP[bId] = {
-            boxId: bId,
-            inboundNo: item.inboundNo,
-            bin: item.bin,
-            operator: item.operator,
-            updatedTime: item.updatedTime,
-            totalQty: 0,
-            skuCount: 0,
-            items: []
-          };
+      for (const item of rawItems) {
+        const id = item.boxId;
+        if (!BOX_MAP[id]) {
+          BOX_MAP[id] = { boxId: id, inboundNo: item.inboundNo, bin: item.bin, operator: item.operator, updatedTime: item.updatedTime, totalQty: 0, skuCount: 0, items: [] };
         }
-        BOX_MAP[bId].totalQty += item.qty;
-        BOX_MAP[bId].skuCount += 1;
-        BOX_MAP[bId].items.push(item);
+        BOX_MAP[id].totalQty += item.qty;
+        BOX_MAP[id].skuCount += 1;
+        BOX_MAP[id].items.push(item);
+      }
+      BOX_LIST = Object.values(BOX_MAP);
+    }
+
+    function renderProgress() {
+      const total = BOX_LIST.length;
+      const done = BOX_LIST.filter((b) => b.bin).length;
+      const pct = total ? Math.round((done / total) * 100) : 0;
+      $("progBar").style.width = pct + "%";
+      $("progText").innerHTML = total ? `<b>${done}</b> / ${total} thùng đã lên kệ` : "Chưa có dữ liệu";
+      $("progPct").textContent = total ? pct + "%" : "";
+    }
+
+    // ---------- BƯỚC 1: TÌM THÙNG ----------
+    // fromEnter = true khi bấm Enter / súng quét gửi Enter
+    function search(fromEnter) {
+      const kw = $("boxInput").value.trim().toUpperCase();
+      const hint = $("scanHint");
+      $("clearBtn").hidden = !kw;
+
+      if (!kw) {
+        hint.hidden = true;
+        $("results").innerHTML = "";
+        renderRecent();
+        return;
+      }
+      $("recentWrap").hidden = true;
+
+      if (!BOX_LIST.length) {
+        $("results").innerHTML = "";
+        showHint(loading ? "Đang tải dữ liệu, chờ một chút…" : "Chưa có dữ liệu kho. Chạm vào dòng trạng thái ở trên để tải lại.", false, false);
+        return;
+      }
+
+      const matches = BOX_LIST.filter((b) => b.boxId.indexOf(kw) !== -1);
+      if (!matches.length) {
+        $("results").innerHTML = "";
+        showHint(`Không có thùng nào khớp “${kw}”. Hàng chưa được nhập dữ liệu, không lên kệ!`, true, fromEnter);
+        return;
+      }
+      hint.hidden = true;
+
+      const exact = BOX_MAP[kw];
+      if (exact && (fromEnter || matches.length === 1)) return selectBox(kw);
+      if (fromEnter && matches.length === 1) return selectBox(matches[0].boxId);
+      renderResults(matches, kw);
+    }
+
+    function showHint(msg, isErr, shake) {
+      const hint = $("scanHint");
+      hint.textContent = msg;
+      hint.className = "hint" + (isErr ? " err" : "");
+      hint.hidden = false;
+      if (shake) {
+        void hint.offsetWidth;
+        hint.classList.add("shake");
+        vibrate([40, 40, 40]);
+        $("boxInput").select();
       }
     }
 
-    // fromSubmit = true khi bấm Enter/nút Tìm; false khi đang gõ
-    function onBoxInputSearch(fromSubmit) {
-      const keyword = document.getElementById('boxIdInput').value.trim().toUpperCase();
-      const hint = document.getElementById('searchHint');
-      hint.style.display = 'none';
-      if (!keyword) {
-        document.getElementById('matchListCard').style.display = 'none';
-        document.getElementById('boxDetails').style.display = 'none';
-        document.getElementById('shelfSection').style.display = 'none';
-        return;
-      }
+    function highlight(id, kw) {
+      const i = id.indexOf(kw);
+      if (i < 0) return esc(id);
+      return esc(id.slice(0, i)) + "<mark>" + esc(kw) + "</mark>" + esc(id.slice(i + kw.length));
+    }
 
-      const matches = [];
-      const keys = Object.keys(BOX_MAP);
-      for (let i = 0; i < keys.length; i++) {
-        if (keys[i].indexOf(keyword) !== -1) {
-          matches.push(BOX_MAP[keys[i]]);
-        }
-      }
+    function renderResults(list, kw) {
+      const MAX = 40;
+      // Khớp chính xác lên đầu, rồi đến thùng chưa lên kệ
+      const sorted = list.slice().sort((a, b) =>
+        (b.boxId === kw) - (a.boxId === kw) || (!!a.bin - !!b.bin) || a.boxId.localeCompare(b.boxId));
+      let html = sorted.slice(0, MAX).map((b) => `
+        <button class="row" data-id="${esc(b.boxId)}">
+          <span class="row-main">
+            <span class="row-id">${highlight(b.boxId, kw)}</span>
+            <span class="row-meta">${esc(b.inboundNo)} · ${b.totalQty} hộp · ${b.skuCount} mã</span>
+          </span>
+          ${b.bin ? `<span class="pill pill-done">${esc(b.bin)}</span>` : `<span class="pill pill-empty">Chưa lên kệ</span>`}
+        </button>`).join("");
+      if (sorted.length > MAX) html += `<div class="more">…và ${sorted.length - MAX} thùng nữa, gõ thêm ký tự để lọc</div>`;
+      const box = $("results");
+      box.innerHTML = html;
+      box.querySelectorAll(".row").forEach((el) => { el.onclick = () => selectBox(el.dataset.id); });
+    }
 
-      if (matches.length === 0) {
-        document.getElementById('matchListCard').style.display = 'none';
-        document.getElementById('boxDetails').style.display = 'none';
-        document.getElementById('shelfSection').style.display = 'none';
-        currentSelectedBoxId = "";
-        if (fromSubmit) {
-          showAlert("Không tìm thấy", "Hàng chưa được nhập dữ liệu, không lên kệ !", "⚠️", () => {
-            document.getElementById('boxIdInput').select();
-          });
-        } else {
-          hint.innerText = `⚠️ Không có thùng nào khớp "${keyword}"`;
-          hint.style.display = 'block';
-        }
-        return;
-      }
+    function renderRecent() {
+      const wrap = $("recentWrap");
+      wrap.hidden = !recent.length || !!$("boxInput").value.trim();
+      $("recentList").innerHTML = recent.map((r) => `
+        <button class="recent-row" data-id="${esc(r.boxId)}">
+          <span class="id">${esc(r.boxId)}</span><span class="bin">${esc(r.bin)}</span><span class="t">${esc(r.time)}</span>
+        </button>`).join("");
+      $("recentList").querySelectorAll(".recent-row").forEach((el) => { el.onclick = () => selectBox(el.dataset.id); });
+    }
 
-      if (matches.length === 1 && matches[0].boxId === keyword) {
-        selectBox(matches[0].boxId);
+    // ---------- BƯỚC 2: THÙNG + KỆ ----------
+    function selectBox(id) {
+      const b = BOX_MAP[id];
+      if (!b) return;
+      selectedId = id;
+      digits = "";
+      scanPrefix = "";
+      $("boxInput").blur();
+
+      $("bxId").textContent = b.boxId;
+      $("bxInbound").textContent = b.inboundNo || "—";
+      $("bxQty").textContent = `${b.totalQty} hộp`;
+      $("bxSkuCount").textContent = b.skuCount;
+      $("bxSkus").innerHTML = b.items.map((it) => `<div class="sku"><span>${esc(it.sku)}</span><b>${it.qty} hộp</b></div>`).join("");
+      $("skuDetails").open = false;
+
+      const st = $("bxState");
+      if (b.bin) {
+        const otherFloor = !b.bin.toUpperCase().startsWith(prefix());
+        st.className = "state state-done";
+        st.innerHTML = `
+          <div class="state-label">Đã lên kệ</div>
+          <div class="state-bin">${esc(b.bin)}</div>
+          <div class="state-meta">bởi ${esc(b.operator || "?")}${b.updatedTime ? " · " + esc(b.updatedTime) : ""} — kiểm tra kỹ đơn nhập để tránh nhầm ngày</div>
+          ${otherFloor ? `<div class="state-note">Kệ này không thuộc tầng bạn đang chọn (${prefix()}).</div>` : ""}`;
+        $("binPanel").hidden = true;
+        $("btnMove").hidden = false;
+        $("binLabel").textContent = "Vị trí kệ MỚI";
       } else {
-        renderMatchList(matches);
+        st.className = "state state-empty";
+        st.innerHTML = `<div class="state-label">Chưa lên kệ</div>`;
+        $("binPanel").hidden = false;
+        $("btnMove").hidden = true;
+        $("binLabel").textContent = "Bước 2 · Vị trí kệ";
       }
+
+      renderDigits();
+      $("viewScan").hidden = true;
+      $("viewBox").hidden = false;
+      window.scrollTo(0, 0);
     }
 
-    function renderMatchList(list) {
-      const container = document.getElementById('matchesContainer');
-      container.innerHTML = '';
+    // Thùng đã lên kệ: phải bấm rõ ràng mới hiện bàn phím nhập kệ mới
+    function startMove() {
+      $("btnMove").hidden = true;
+      $("binPanel").hidden = false;
+      $("binPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
 
-      list.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'match-card';
-        card.onclick = () => selectBox(item.boxId);
+    function backToScan(focus = true) {
+      selectedId = "";
+      digits = "";
+      scanPrefix = "";
+      $("boxInput").value = "";
+      $("viewBox").hidden = true;
+      $("viewScan").hidden = false;
+      search(false);
+      if (focus) $("boxInput").focus();
+    }
 
-        let shelfBadge = '';
-        if (item.bin) {
-          shelfBadge = `<span class="shelf-badge badge-done">✓ ${item.bin}</span>`;
-        } else {
-          shelfBadge = `<span class="shelf-badge badge-empty">Chưa lên kệ</span>`;
+    function buildKeypad() {
+      const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "back"];
+      const labels = { clear: "Xoá hết", back: "⌫" };
+      const pad = $("keypad");
+      pad.innerHTML = keys.map((k) => `<button class="key${labels[k] ? " fn" : ""}" data-k="${k}">${labels[k] || k}</button>`).join("");
+      pad.querySelectorAll(".key").forEach((el) => { el.onclick = () => pressKey(el.dataset.k); });
+    }
+
+    function pressKey(k) {
+      if (k === "back") digits = digits.slice(0, -1);
+      else if (k === "clear") digits = "";
+      else if (digits.length < 6) digits += k;
+      vibrate(8);
+      renderDigits();
+    }
+
+    function renderDigits() {
+      let html = `<span class="slot-pre">${prefix()}</span>`;
+      for (let i = 0; i < 6; i++) {
+        const cls = ["slot"];
+        if (i === 2 || i === 4) cls.push("gap");
+        if (i < digits.length) cls.push("filled");
+        if (i === digits.length) cls.push("current");
+        html += `<span class="${cls.join(" ")}">${digits[i] || ""}</span>`;
+      }
+      $("slots").innerHTML = html;
+      const btn = $("btnSave");
+      btn.disabled = digits.length !== 6;
+      btn.textContent = digits.length === 6 ? `Lên kệ ${prefix()}${digits}` : `Nhập đủ 6 số (${digits.length}/6)`;
+    }
+
+    function anyOverlayOpen() {
+      return !$("dlg").hidden || !$("menu").hidden || !$("setup").hidden || !$("flash").hidden;
+    }
+
+    // Bàn phím vật lý / súng quét khi đang ở bước nhập kệ
+    function onGlobalKey(e) {
+      if (!$("flash").hidden) hideFlash();
+      if (anyOverlayOpen() || $("viewBox").hidden || $("binPanel").hidden) return;
+      if (e.target && e.target.tagName === "INPUT") return;
+      const k = e.key;
+      if (k === "s" || k === "S") {
+        // Quét mã kệ đầy đủ "S15xxxxxx": bỏ tiền tố, kiểm tra đúng tầng
+        scanPrefix = "S";
+        digits = "";
+        renderDigits();
+      } else if (/^[0-9]$/.test(k)) {
+        e.preventDefault();
+        if (scanPrefix) {
+          scanPrefix += k;
+          if (scanPrefix.length === 3) {
+            const p = scanPrefix;
+            scanPrefix = "";
+            if (p !== prefix()) {
+              digits = "";
+              renderDigits();
+              alertDlg("Sai tầng", `Mã kệ ${p}… thuộc tầng khác.\nBạn đang chọn ${prefix()} (Tầng ${floor}).`, "🏢");
+            }
+          }
+          return;
         }
-
-        const opTag = item.operator ? `<span class="operator-stamp">👤 ${item.operator}</span>` : '';
-
-        card.innerHTML = `
-          <div class="match-line-1">
-            <span class="match-box-title">${item.boxId}</span>
-            ${shelfBadge}
-          </div>
-          <div class="match-line-2">
-            <div>
-              <span class="inbound-chip">${item.inboundNo}</span>
-              <span class="qty-indicator">• ${item.totalQty} hộp</span>
-            </div>
-            ${opTag}
-          </div>
-        `;
-        container.appendChild(card);
-      });
-
-      document.getElementById('boxDetails').style.display = 'none';
-      document.getElementById('shelfSection').style.display = 'none';
-      document.getElementById('matchListCard').style.display = 'block';
+        pressKey(k);
+      } else if (k === "Backspace") {
+        e.preventDefault();
+        pressKey("back");
+      } else if (k === "Enter") {
+        e.preventDefault();
+        if (digits.length === 6) save(false);
+      } else if (k === "Escape") {
+        backToScan();
+      }
     }
 
-    let currentSelectedBoxId = "";
+    function save(forceOverwrite) {
+      if (!operator || !floor) { openSetup(); return; }
+      if (!selectedId || digits.length !== 6) return;
 
-    function selectBox(boxId) {
-      currentSelectedBoxId = boxId;
-      document.getElementById('boxIdInput').value = currentSelectedBoxId;
-      document.getElementById('matchListCard').style.display = 'none';
+      const target = selectedId;
+      const bin = prefix() + digits;
+      const btn = $("btnSave");
+      btn.disabled = true;
+      btn.classList.add("busy");
+      btn.textContent = "Đang lưu…";
 
-      const data = BOX_MAP[boxId];
-      if (!data) return;
-
-      document.getElementById('dispBoxId').innerText = data.boxId;
-      document.getElementById('dispInbound').innerText = data.inboundNo;
-      document.getElementById('dispTotalQty').innerText = data.totalQty;
-      document.getElementById('dispSkuCount').innerText = data.skuCount;
-
-      const binElem = document.getElementById('dispCurrentBin');
-      const conflictBanner = document.getElementById('conflictBanner');
-      const timeElem = document.getElementById('dispOperatorTime');
-
-      if (data.bin) {
-        binElem.innerText = data.bin;
-        binElem.style.color = "var(--success)";
-
-        // Không điền sẵn vị trí cũ, tránh bấm xác nhận theo thói quen
-        document.getElementById('binSuffixInput').value = "";
-
-        timeElem.innerText = `Lên bởi: ${data.operator} (${data.updatedTime})`;
-        conflictBanner.innerHTML = `⚠️ Thùng này ĐÃ LÊN KỆ tại<span class="banner-old-bin">${data.bin}</span>bởi [${data.operator}]. Kiểm tra kỹ đơn nhập để tránh nhầm ngày!<br>Chỉ nhập vị trí mới nếu muốn chuyển kệ.`;
-        conflictBanner.style.display = 'block';
-      } else {
-        binElem.innerText = "Chưa lên kệ";
-        binElem.style.color = "var(--text-sub)";
-        document.getElementById('binSuffixInput').value = "";
-        timeElem.innerText = "";
-        conflictBanner.style.display = 'none';
-      }
-
-      updateShelfPreview();
-
-      const itemsContainer = document.getElementById('itemsList');
-      itemsContainer.innerHTML = '';
-      data.items.forEach(item => {
-        const row = document.createElement('div');
-        row.className = 'sku-item';
-        row.innerHTML = `<span class="sku-name">${item.sku}</span><span class="sku-qty">${item.qty} hộp</span>`;
-        itemsContainer.appendChild(row);
-      });
-
-      const shelfSection = document.getElementById('shelfSection');
-      const boxDetails = document.getElementById('boxDetails');
-
-      boxDetails.style.border = '1px solid var(--border)';
-      shelfSection.style.display = 'block';
-      document.getElementById('binSuffixInput').focus();
-
-      boxDetails.style.display = 'block';
-    }
-
-    function submitShelfLocation(forceOverwrite = false) {
-      if (!currentOperator) {
-        promptChangeOperator();
-        return;
-      }
-      if (!currentFloor) {
-        openAreaSelectModal();
-        return;
-      }
-
-      const suffixInput = document.getElementById('binSuffixInput');
-      const suffix = suffixInput ? suffixInput.value.trim().toUpperCase() : "";
-
-      if (!currentSelectedBoxId) {
-        showAlert("Chưa chọn thùng", "Vui lòng chọn thùng hàng trước!", "⚠️");
-        return;
-      }
-      if (!suffix) {
-        showAlert("Thiếu vị trí", "Vui lòng nhập 6 số vị trí kệ!", "⚠️");
-        return;
-      }
-      if (suffix.length !== 6) {
-        showAlert("Sai định dạng", "Vị trí kệ yêu cầu nhập đúng 6 số!", "⚠️");
-        return;
-      }
-
-      const prefix = currentFloor === 1 ? "S10" : "S15";
-      const fullBinLocation = prefix + suffix;
-      const targetBoxId = currentSelectedBoxId;
-
-      const submitBtn = document.getElementById('btnSubmitShelf');
-      submitBtn.innerText = "⚡ Đang lưu...";
-      submitBtn.disabled = true;
-
-      callApi("updateLocation", {
-        boxId: targetBoxId,
-        bin: fullBinLocation,
-        operator: currentOperator,
-        forceOverwrite: forceOverwrite
-      })
-        .then(function(res) {
-          submitBtn.innerText = "XÁC NHẬN LÊN KỆ";
-          submitBtn.disabled = false;
-
+      callApi("updateLocation", { boxId: target, bin: bin, operator: operator, forceOverwrite: forceOverwrite })
+        .then((res) => {
+          btn.classList.remove("busy");
           if (res.success) {
             // Chỉ cập nhật bộ nhớ máy khi server đã lưu xong
-            if (BOX_MAP[targetBoxId]) {
-              BOX_MAP[targetBoxId].bin = fullBinLocation;
-              BOX_MAP[targetBoxId].operator = currentOperator;
-              BOX_MAP[targetBoxId].updatedTime = res.nowStr;
-            }
-
-            document.getElementById('boxIdInput').value = '';
-            document.getElementById('binSuffixInput').value = '';
-            updateShelfPreview();
-            document.getElementById('boxDetails').style.display = 'none';
-            document.getElementById('shelfSection').style.display = 'none';
-            currentSelectedBoxId = "";
-            document.getElementById('boxIdInput').focus();
-
-            showToast(`✅ ${targetBoxId} → ${fullBinLocation}`);
+            const b = BOX_MAP[target];
+            if (b) { b.bin = bin; b.operator = operator; b.updatedTime = res.nowStr; }
+            recent.unshift({ boxId: target, bin: bin, time: clock() });
+            if (recent.length > 8) recent.length = 8;
+            renderProgress();
+            // Focus ô tìm ngay để súng quét có thể quét thùng kế tiếp khi màn xanh còn hiện
+            backToScan(true);
+            showFlash(target, bin);
           } else if (res.isAlreadySaved) {
             // Server có vị trí mới hơn (người khác vừa lưu) thì cập nhật lại máy
-            if (BOX_MAP[targetBoxId]) {
-              BOX_MAP[targetBoxId].bin = res.existingBin;
-              BOX_MAP[targetBoxId].operator = res.existingUser;
-            }
-            showConfirm(
-              "Cảnh báo trùng vị trí!",
-              `Thùng này ĐÃ ĐƯỢC LÊN KỆ tại kệ [${res.existingBin}] bởi [${res.existingUser}].\n\nBạn có CHẮC CHẮN muốn đổi sang [${fullBinLocation}] không?`,
-              "⚠️",
-              function() {
-                submitShelfLocation(true);
-              }
+            const b = BOX_MAP[target];
+            if (b) { b.bin = res.existingBin; b.operator = res.existingUser; }
+            renderProgress();
+            renderDigits();
+            confirmDlg(
+              "Thùng đã lên kệ!",
+              `${target} đang ở kệ ${res.existingBin} (bởi ${res.existingUser || "?"}).\n\nĐổi sang ${bin}?`,
+              "⚠️", "Đổi kệ",
+              () => save(true),
+              () => selectBox(target)
             );
           } else {
-            showAlert("Lỗi", res.message, "❌");
+            renderDigits();
+            alertDlg("Không lưu được", res.message || "Lỗi không xác định", "❌");
           }
         })
-        .catch(function(err) {
-          submitBtn.innerText = "XÁC NHẬN LÊN KỆ";
-          submitBtn.disabled = false;
-          showAlert("Lỗi kết nối", err.message, "❌");
+        .catch((err) => {
+          btn.classList.remove("busy");
+          renderDigits();
+          alertDlg("Mất kết nối", "Chưa lưu được. Kiểm tra mạng rồi bấm lưu lại.\n(" + err.message + ")", "📡");
         });
     }
 
-    function promptChangeOperator() {
-      document.getElementById('operatorModal').style.display = 'flex';
-      const input = document.getElementById('operatorNameInput');
-      input.value = currentOperator;
-      setTimeout(() => input.focus(), 150);
+    let flashTimer = null;
+    function showFlash(boxId, bin) {
+      $("flashBox").textContent = boxId;
+      $("flashBin").textContent = bin;
+      $("flash").hidden = false;
+      vibrate(80);
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(hideFlash, 1200);
+    }
+    function hideFlash() {
+      clearTimeout(flashTimer);
+      if ($("flash").hidden) return;
+      $("flash").hidden = true;
+      if (!$("viewScan").hidden) $("boxInput").focus();
     }
 
-    function saveOperatorName() {
-      const name = document.getElementById('operatorNameInput').value.trim().toUpperCase();
-      if (!name) {
-        showAlert("Thiếu tên", "Vui lòng nhập tên hoặc mã của bạn!", "⚠️");
-        return;
+    // ---------- THIẾT LẬP: TÊN + TẦNG ----------
+    let setupFloor = null;
+    function openSetup() {
+      closeMenu();
+      setupFloor = floor;
+      $("setupName").value = operator;
+      $("setupCancel").hidden = !(operator && floor);
+      renderSetup();
+      $("setup").hidden = false;
+      setTimeout(() => { if (!operator) $("setupName").focus(); }, 100);
+    }
+    function pickFloor(f) {
+      setupFloor = f;
+      renderSetup();
+    }
+    function renderSetup() {
+      document.querySelectorAll(".floor-card").forEach((c) => c.classList.toggle("on", Number(c.dataset.f) === setupFloor));
+      document.body.dataset.floor = setupFloor || floor || 1;
+      $("setupGo").disabled = !($("setupName").value.trim() && setupFloor);
+    }
+    function saveSetup() {
+      const name = $("setupName").value.trim().toUpperCase();
+      if (!name || !setupFloor) return;
+      operator = name;
+      floor = setupFloor;
+      store.set("WAREHOUSE_OPERATOR", operator);
+      store.set("WAREHOUSE_FLOOR", String(floor));
+      $("setup").hidden = true;
+      applyFloor();
+      renderOperator();
+      if (selectedId) selectBox(selectedId);
+      else $("boxInput").focus();
+    }
+    function closeSetup() {
+      $("setup").hidden = true;
+      applyFloor();
+    }
+    function applyFloor() {
+      document.body.dataset.floor = floor || 1;
+      $("floorNum").textContent = floor ? "Tầng " + floor : "Tầng ?";
+      $("floorPre").textContent = prefix();
+      renderDigits();
+    }
+    function renderOperator() {
+      $("hdrOp").textContent = operator || "Chưa nhập tên";
+    }
+
+    // ---------- MENU ----------
+    function openMenu() {
+      renderMenu();
+      $("menu").hidden = false;
+    }
+    function closeMenu() {
+      $("menu").hidden = true;
+    }
+    function renderMenu() {
+      const items = [
+        { t: "Ca làm việc" },
+        { ic: "👤", b: "Đổi nhân viên / tầng", s: `${operator || "Chưa nhập"} · Tầng ${floor || "?"} (${prefix()})`, fn: openSetup },
+        { ic: "🔄", b: "Tải lại dữ liệu", s: lastLoadAt ? `Lần cuối ${clock(lastLoadAt)}` : "Chưa tải", fn: () => { closeMenu(); loadData(); } },
+        { t: "Quản trị" }
+      ];
+      if (adminPin) {
+        items.push(
+          { ic: "📥", b: "Nạp file Excel mới", s: "Thay toàn bộ dữ liệu trên Sheet", fn: () => { closeMenu(); $("fileInput").click(); } },
+          { ic: "📤", b: "Xuất file đã xong", s: "Tải về file .xlsx", fn: () => { closeMenu(); exportCompletedFile(); } },
+          { ic: "🔒", b: "Khoá quản trị", s: "", fn: () => { adminPin = ""; renderMenu(); } }
+        );
+      } else {
+        items.push({ ic: "🔐", b: "Mở quản trị", s: "Cần mã PIN", fn: () => { closeMenu(); askPin(); } });
       }
-      currentOperator = name;
-      localStorage.setItem("WAREHOUSE_OPERATOR", currentOperator);
-      document.getElementById('dispCurrentOperator').innerText = currentOperator;
-      document.getElementById('operatorModal').style.display = 'none';
+      const body = $("menuBody");
+      body.innerHTML = "";
+      items.forEach((it) => {
+        if (it.t) {
+          const h = document.createElement("div");
+          h.className = "sheet-title";
+          h.textContent = it.t;
+          body.appendChild(h);
+          return;
+        }
+        const el = document.createElement("button");
+        el.className = "menu-item";
+        el.innerHTML = `<span class="ic">${it.ic}</span><span class="tx"><b>${esc(it.b)}</b>${it.s ? `<small>${esc(it.s)}</small>` : ""}</span>`;
+        el.onclick = it.fn;
+        body.appendChild(el);
+      });
     }
 
-    let toastTimer = null;
-    function showToast(message) {
-      let toast = document.getElementById('toast');
-      if (!toast) {
-        toast = document.createElement('div');
-        toast.id = 'toast';
-        toast.className = 'toast';
-        document.body.appendChild(toast);
-      }
-      toast.innerText = message;
-      toast.classList.add('show');
-      if (navigator.vibrate) navigator.vibrate(60);
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => toast.classList.remove('show'), 2000);
+    function askPin() {
+      openDialog({
+        icon: "🔐", title: "Mở quản trị", body: "Nhập mã PIN để nạp & xuất file",
+        input: { type: "password", placeholder: "PIN" },
+        actions: [
+          { label: "Huỷ", kind: "ghost" },
+          { label: "Mở khoá", kind: "primary", fn: (pin) => {
+            pin = String(pin || "").trim();
+            callApi("verifyPin", { pin: pin })
+              .then((res) => {
+                if (res.success) { adminPin = pin; openMenu(); }
+                else alertDlg("Sai mã PIN", "Mã PIN không chính xác!", "❌");
+              })
+              .catch((err) => alertDlg("Mất kết nối", err.message, "📡"));
+          } }
+        ]
+      });
     }
 
-    let alertCallback = null;
-    function showAlert(title, message, icon = "ℹ️", onOk = null) {
-      document.getElementById('customAlertIcon').innerText = icon;
-      document.getElementById('customAlertTitle').innerText = title;
-      document.getElementById('customAlertMessage').innerHTML = message.replace(/\n/g, "<br>");
-      document.getElementById('customAlertButtons').innerHTML = `
-        <button class="modal-btn btn-m-confirm" onclick="closeCustomAlert()">Đã hiểu</button>
-      `;
-      alertCallback = onOk;
-      document.getElementById('customAlertModal').style.display = 'flex';
-    }
-
-    function showConfirm(title, message, icon = "❓", onConfirm = null) {
-      document.getElementById('customAlertIcon').innerText = icon;
-      document.getElementById('customAlertTitle').innerText = title;
-      document.getElementById('customAlertMessage').innerHTML = message.replace(/\n/g, "<br>");
-      document.getElementById('customAlertButtons').innerHTML = `
-        <button class="modal-btn btn-m-cancel" onclick="closeCustomAlert()">Hủy bỏ</button>
-        <button class="modal-btn btn-m-confirm" id="btnConfirmOk">Xác nhận</button>
-      `;
-      document.getElementById('btnConfirmOk').onclick = function() {
-        closeCustomAlert();
-        if (typeof onConfirm === "function") onConfirm();
+    // ---------- HỘP THOẠI ----------
+    function openDialog(opt) {
+      $("dlgIcon").textContent = opt.icon || "";
+      $("dlgTitle").textContent = opt.title || "";
+      $("dlgBody").innerHTML = esc(opt.body || "").replace(/\n/g, "<br>");
+      const inp = $("dlgInput");
+      inp.hidden = !opt.input;
+      inp.value = "";
+      if (opt.input) { inp.type = opt.input.type || "text"; inp.placeholder = opt.input.placeholder || ""; }
+      const acts = $("dlgActions");
+      acts.innerHTML = "";
+      const run = (a) => { const v = inp.value; closeDialog(); if (a.fn) a.fn(v); };
+      (opt.actions || []).forEach((a) => {
+        const b = document.createElement("button");
+        b.className = "btn btn-" + (a.kind || "ghost");
+        b.textContent = a.label;
+        b.onclick = () => run(a);
+        acts.appendChild(b);
+      });
+      inp.onkeydown = (e) => {
+        if (e.key !== "Enter") return;
+        const p = (opt.actions || []).find((a) => a.kind === "primary");
+        if (p) run(p);
       };
-      document.getElementById('customAlertModal').style.display = 'flex';
+      $("dlg").hidden = false;
+      if (opt.input) setTimeout(() => inp.focus(), 80);
+    }
+    function closeDialog() {
+      $("dlg").hidden = true;
+    }
+    function alertDlg(title, body, icon, onOk) {
+      openDialog({ icon: icon || "ℹ️", title: title, body: body, actions: [{ label: "Đã hiểu", kind: "primary", fn: onOk }] });
+    }
+    function confirmDlg(title, body, icon, okLabel, onOk, onCancel) {
+      openDialog({ icon: icon, title: title, body: body, actions: [
+        { label: "Huỷ", kind: "ghost", fn: onCancel },
+        { label: okLabel, kind: "danger", fn: onOk }
+      ] });
     }
 
-    function closeCustomAlert() {
-      document.getElementById('customAlertModal').style.display = 'none';
-      if (typeof alertCallback === "function") {
-        alertCallback();
-        alertCallback = null;
-      }
-    }
-
-    function openAdminModal() {
-      if (isAdminUnlocked) {
-        lockAdmin();
-      } else {
-        const modal = document.getElementById('adminModal');
-        modal.style.display = 'flex';
-        const input = document.getElementById('adminPinInput');
-        input.value = '';
-        setTimeout(() => input.focus(), 150);
-      }
-    }
-
-    function closeAdminModal() {
-      document.getElementById('adminModal').style.display = 'none';
-    }
-
-    async function checkAdminPin() {
-      const pin = document.getElementById('adminPinInput').value.trim();
-      let ok = false;
-      try {
-        ok = (await callApi("verifyPin", { pin: pin })).success;
-      } catch (err) {
-        showAlert("Lỗi kết nối", err.message, "❌");
-        return;
-      }
-      if (ok) {
-        adminPin = pin;
-        isAdminUnlocked = true;
-        closeAdminModal();
-        document.getElementById('adminPanel').style.display = 'block';
-        document.getElementById('btnAdminToggle').innerText = "🔓 Đang mở";
-        document.getElementById('btnAdminToggle').style.backgroundColor = "var(--success)";
-        document.getElementById('btnAdminToggle').style.color = "#ffffff";
-      } else {
-        showAlert("Sai mã PIN", "Mã PIN Admin không chính xác!", "❌");
-        document.getElementById('adminPinInput').value = '';
-        document.getElementById('adminPinInput').focus();
-      }
-    }
-
-    function lockAdmin() {
-      adminPin = "";
-      isAdminUnlocked = false;
-      document.getElementById('adminPanel').style.display = 'none';
-      document.getElementById('btnAdminToggle').innerText = "⚙️ Admin";
-      document.getElementById('btnAdminToggle').style.backgroundColor = "#e5e5ea";
-      document.getElementById('btnAdminToggle').style.color = "#3a3a3c";
+    // ---------- QUẢN TRỊ: NẠP / XUẤT FILE ----------
+    function ensureExcelJS() {
+      if (window.ExcelJS) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = EXCELJS_URL;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error("Không tải được thư viện đọc Excel"));
+        document.head.appendChild(s);
+      });
     }
 
     // Nạp file Excel lưu trọn vẹn màu sắc vào Sheet
     function handleExcelUpload(event) {
       const file = event.target.files[0];
+      event.target.value = "";
       if (!file) return;
 
-      showConfirm(
-        "Xác nhận nạp file",
-        `Nạp dữ liệu từ file:\n"${file.name}"?\nToàn bộ dữ liệu và màu sắc cũ sẽ được thay thế.`,
-        "📥",
+      confirmDlg(
+        "Nạp file mới?",
+        `"${file.name}"\nToàn bộ dữ liệu và màu sắc cũ trên Sheet sẽ bị thay thế.`,
+        "📥", "Nạp file",
         function() {
-          const importBtn = document.getElementById('btnImportText');
-          importBtn.innerText = "⏳ Đang đọc...";
-          importBtn.disabled = true;
-
-          const reader = new FileReader();
-          reader.onload = async function(e) {
-            try {
-              const buffer = e.target.result;
+          setSync("loading", "Đang đọc file Excel…");
+          ensureExcelJS()
+            .then(() => file.arrayBuffer())
+            .then(async (buffer) => {
               const workbook = new ExcelJS.Workbook();
               await workbook.xlsx.load(buffer);
-              
+
               const worksheet = workbook.worksheets[0];
               const totalRows = worksheet.rowCount;
-
-              if (totalRows < 2) {
-                showAlert("File rỗng", "File Excel không có dữ liệu hàng!", "⚠️");
-                importBtn.innerText = "📥 Nạp File Mới";
-                importBtn.disabled = false;
-                return;
-              }
+              if (totalRows < 2) throw new Error("File Excel không có dữ liệu hàng!");
 
               const rows = [];
               const bgColors = [];
@@ -913,7 +976,7 @@
                 const rowFonts = [];
                 for (let c = 1; c <= 5; c++) {
                   const cell = row.getCell(c);
-                  
+
                   let bg = "#ffffff";
                   if (cell.fill) {
                     if (cell.fill.fgColor && cell.fill.fgColor.argb) {
@@ -944,63 +1007,40 @@
                 fontColors.push(rowFonts);
               }
 
-              importBtn.innerText = "⏳ Đang ghi Sheet...";
-
-              callApi("import", {
-                pin: adminPin,
-                payload: {
-                  values: rows,
-                  bgColors: bgColors,
-                  fontColors: fontColors
-                }
-              }).then(function(res) {
-                importBtn.innerText = "📥 Nạp File Mới";
-                importBtn.disabled = false;
-                if (res.success) {
-                  showAlert("Thành công", `Đã nạp ${res.count} dòng dữ liệu!\nToàn bộ định dạng đã được lưu chuẩn xác.`, "🎉", () => {
-                    lockAdmin();
-                    loadWarehouseDataFromCloud();
-                  });
-                } else {
-                  showAlert("Lỗi lưu dữ liệu", res.message, "❌");
-                }
-              }).catch(function(err) {
-                importBtn.innerText = "📥 Nạp File Mới";
-                importBtn.disabled = false;
-                showAlert("Lỗi kết nối", err.message, "❌");
-              });
-
-            } catch (err) {
-              importBtn.innerText = "📥 Nạp File Mới";
-              importBtn.disabled = false;
-              showAlert("Lỗi đọc file", err.message, "❌");
-            }
-          };
-          reader.readAsArrayBuffer(file);
+              setSync("loading", "Đang ghi lên Sheet…");
+              return callApi("import", { pin: adminPin, payload: { values: rows, bgColors: bgColors, fontColors: fontColors } });
+            })
+            .then((res) => {
+              if (res.success) {
+                alertDlg("Đã nạp xong", `Đã nạp ${res.count} dòng dữ liệu, giữ nguyên định dạng và màu sắc.`, "🎉");
+                loadData();
+              } else {
+                setSync("err", "Nạp file thất bại");
+                alertDlg("Lỗi lưu dữ liệu", res.message, "❌");
+              }
+            })
+            .catch((err) => {
+              setSync("err", "Nạp file thất bại");
+              alertDlg("Lỗi nạp file", err.message, "❌");
+            });
         }
       );
-      event.target.value = "";
     }
 
     function exportCompletedFile() {
-      const exportBtn = document.getElementById('btnExportText');
-      exportBtn.innerText = "⏳ Đang tạo...";
-      exportBtn.disabled = true;
-
+      setSync("loading", "Đang tạo link tải…");
       callApi("exportUrl", { pin: adminPin })
-        .then(function(res) {
-          exportBtn.innerText = "📤 Xuất File Xong";
-          exportBtn.disabled = false;
+        .then((res) => {
+          setSync("ok", "Sẵn sàng");
           if (!res.success || !res.url) {
-            showAlert("Lỗi", res.message || "Không thể lấy link tải file!", "❌");
+            alertDlg("Lỗi", res.message || "Không thể lấy link tải file!", "❌");
             return;
           }
           window.location.href = res.url;
         })
-        .catch(function(err) {
-          exportBtn.innerText = "📤 Xuất File Xong";
-          exportBtn.disabled = false;
-          showAlert("Lỗi xuất file", err.message, "❌");
+        .catch((err) => {
+          setSync("err", "Xuất file thất bại");
+          alertDlg("Lỗi xuất file", err.message, "❌");
         });
     }
   </script>
