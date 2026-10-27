@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Hệ Thống Lên Kệ Kho</title>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+  <style>
+    :root {
+      --primary: #007aff;
+      --primary-dark: #0056b3;
+      --success: #34c759;
+      --warning: #ff9500;
+      --danger: #ff3b30;
+      --bg: #f2f2f7;
+      --surface: #ffffff;
+      --text-main: #1c1c1e;
+      --text-sub: #8e8e93;
+      --border: #e5e5ea;
+    }
+
+    * { 
+      box-sizing: border-box; 
+      -webkit-tap-highlight-color: transparent; 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      margin: 0; padding: 14px 14px 28px 14px; background-color: var(--bg); color: var(--text-main);
+    }
+
+    /* TOP BAR & ADMIN */
+    .top-bar {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
+    }
+    .top-bar h1 {
+      margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.3px; color: var(--text-main);
+    }
+    .btn-admin {
+      background: #e5e5ea; color: #3a3a3c; border: none; border-radius: 20px;
+      padding: 6px 14px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 4px;
+      cursor: pointer;
+    }
+    .btn-admin:active { background: #d1d1d6; }
+
+    /* DASHBOARD CARD */
+    .dashboard-card {
+      background: var(--surface); border-radius: 14px; padding: 12px 14px;
+      margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .dash-row {
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .dash-meta {
+      display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500;
+    }
+    .dash-label { color: var(--text-sub); font-size: 13px; }
+    .dash-val { font-weight: 700; color: var(--text-main); }
+    .btn-mini-action {
+      background: #f2f2f7; color: var(--primary); border: 1px solid #d1d1d6;
+      border-radius: 8px; height: 32px; padding: 0 12px; font-size: 12px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+    }
+    .btn-mini-action:active { background: #e5e5ea; transform: scale(0.97); }
+
+    .tag-area-f1 {
+      background: #e0f2fe; color: #0284c7; padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 12px;
+    }
+    .tag-area-f2 {
+      background: #fef3c7; color: #d97706; padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 12px;
+    }
+
+    /* CARD CONTAINER */
+    .card {
+      background: var(--surface); border-radius: 14px; padding: 14px;
+      margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border: 1px solid var(--border);
+    }
+    .section-label {
+      font-size: 11px; font-weight: 700; color: var(--text-sub);
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: block;
+    }
+
+    /* SEARCH WRAPPER */
+    .search-wrap { display: flex; gap: 8px; }
+    .search-box {
+      flex: 1; height: 48px; font-size: 16px; font-weight: 600; padding: 0 14px;
+      border: 1.5px solid var(--border); border-radius: 10px; text-transform: uppercase;
+      outline: none; background: #fafafa;
+    }
+    .search-box:focus { border-color: var(--primary); background: #ffffff; }
+    .btn-search-exec {
+      background: var(--primary); color: white; border: none; border-radius: 10px;
+      padding: 0 18px; font-size: 15px; font-weight: 600; cursor: pointer;
+    }
+    .btn-search-exec:active { background: var(--primary-dark); }
+
+    /* MATCH LIST ITEMS */
+    .match-card {
+      background: #ffffff; border: 1.5px solid var(--border); border-radius: 12px;
+      padding: 12px 14px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 8px;
+      cursor: pointer;
+    }
+    .match-card:active { background: #f2f2f7; border-color: var(--primary); }
+    .match-line-1 {
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .match-box-title {
+      font-size: 16px; font-weight: 700; color: var(--primary); letter-spacing: 0.3px;
+    }
+    .match-line-2 {
+      display: flex; justify-content: space-between; align-items: center; font-size: 13px;
+    }
+    .inbound-chip {
+      background: #f2f2f7; color: #48484a; padding: 2px 8px; border-radius: 5px;
+      font-size: 12px; font-weight: 600;
+    }
+    .qty-indicator { font-weight: 600; color: var(--text-main); margin-left: 6px; }
+    .operator-stamp {
+      font-size: 12px; color: var(--text-sub); font-weight: 500; display: flex; align-items: center; gap: 4px;
+    }
+
+    /* BADGES */
+    .shelf-badge {
+      padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; white-space: nowrap;
+    }
+    .badge-done { background: #dcfce7; color: #15803d; }
+    .badge-empty { background: #f2f2f7; color: #8e8e93; }
+
+    /* DETAIL SUMMARY */
+    .detail-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
+    }
+    .grid-cell { display: flex; flex-direction: column; }
+    .cell-title { font-size: 11px; font-weight: 700; color: var(--text-sub); text-transform: uppercase; }
+    .cell-data { font-size: 15px; font-weight: 700; color: var(--text-main); margin-top: 2px; }
+
+    /* SKUS CONTAINER */
+    .sku-list {
+      max-height: 140px; overflow-y: auto; margin-top: 10px; border: 1px solid var(--border);
+      border-radius: 8px; background: #fafafa;
+    }
+    .sku-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 13px;
+    }
+    .sku-item:last-child { border-bottom: none; }
+    .sku-name { font-weight: 600; }
+    .sku-qty { font-weight: 700; }
+
+    /* BANNERS */
+    .banner-box {
+      border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; text-align: center;
+      font-size: 13px; font-weight: 600; line-height: 1.4; display: none;
+    }
+    .banner-warning { background: #fef3c7; border: 1.5px solid #f59e0b; color: #92400e; }
+
+    /* SHELF LOCATION INPUT 6 DIGITS */
+    .shelf-input-container {
+      display: flex; align-items: center; height: 50px; border: 1.5px solid var(--border);
+      border-radius: 12px; overflow: hidden; background: #ffffff;
+    }
+    .shelf-input-container:focus-within { border-color: var(--primary); }
+    .fixed-prefix {
+      background: #f2f2f7; color: var(--primary); font-size: 17px; font-weight: 700;
+      padding: 0 16px; height: 100%; display: flex; align-items: center;
+      border-right: 1.5px solid var(--border);
+    }
+    .six-digit-field {
+      flex: 1; height: 100%; border: none !important; outline: none; font-size: 20px !important;
+      font-weight: 700; letter-spacing: 3px; padding: 0 14px; color: var(--text-main);
+    }
+    .preview-line {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 6px; font-size: 12px; color: var(--text-sub); font-weight: 600;
+    }
+    .preview-line strong { color: var(--primary); font-size: 14px; font-weight: 700; }
+
+    .btn-confirm-shelf {
+      background: var(--warning); color: #ffffff; width: 100%; height: 48px;
+      border: none; border-radius: 12px; font-size: 16px; font-weight: 700;
+      margin-top: 10px; box-shadow: 0 2px 8px rgba(255,149,0,0.3); cursor: pointer;
+    }
+    .btn-confirm-shelf:active { background: #e08500; transform: scale(0.98); }
+
+    /* MODALS */
+    .modal-overlay {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.45); z-index: 99999;
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-card {
+      background: #ffffff; width: 100%; max-width: 320px; border-radius: 18px;
+      padding: 22px 18px; text-align: center; box-shadow: 0 12px 30px rgba(0,0,0,0.2);
+      animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    @keyframes popIn {
+      from { opacity: 0; transform: scale(0.9); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .modal-icon { font-size: 34px; margin-bottom: 8px; }
+    .modal-head { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+    .modal-body { font-size: 14px; color: #48484a; margin-bottom: 18px; line-height: 1.4; }
+    .modal-actions { display: flex; gap: 8px; }
+    .modal-btn {
+      flex: 1; height: 42px; border-radius: 10px; border: none; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    .btn-m-cancel { background: #e5e5ea; color: #1c1c1e; }
+    .btn-m-confirm { background: var(--primary); color: #ffffff; }
+
+    .floor-choice-btn {
+      width: 100%; height: 52px; border-radius: 12px; font-size: 16px; font-weight: 700;
+      margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;
+      padding: 0 16px; border: 2px solid transparent; cursor: pointer;
+    }
+    .choice-f1 { background: #e0f2fe; color: #0284c7; border-color: #0284c7; }
+    .choice-f2 { background: #fef3c7; color: #d97706; border-color: #d97706; }
+
+    /* ADMIN PANEL */
+    #adminPanel { display: none; background: #eef2ff; border: 1.5px dashed #4f46e5; }
+    .admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .btn-admin-task {
+      height: 40px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
+      color: white; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- TOP HEADER -->
+  <div class="top-bar">
+    <h1>KHO LÊN KỆ</h1>
+    <button class="btn-admin" id="btnAdminToggle" onclick="openAdminModal()">⚙️ Admin</button>
+  </div>
+
+  <!-- DASHBOARD BAR -->
+  <div class="dashboard-card">
+    <div class="dash-row">
+      <div class="dash-meta">
+        <span class="dash-label">Nhân viên:</span>
+        <span class="dash-val" id="dispCurrentOperator">Chưa nhập</span>
+      </div>
+      <button class="btn-mini-action" onclick="promptChangeOperator()">Đổi tên</button>
+    </div>
+    <div class="dash-row">
+      <div class="dash-meta">
+        <span class="dash-label">Khu vực:</span>
+        <span id="dispCurrentArea" class="tag-area-f1">TẦNG 1</span>
+        <span id="syncStatus" style="font-size: 11px; font-weight: 700; color: var(--success);">⚡ Sẵn sàng</span>
+      </div>
+      <button class="btn-mini-action" onclick="openAreaSelectModal()">Đổi tầng</button>
+    </div>
+  </div>
+
+  <!-- ADMIN DRAWER -->
+  <div class="card" id="adminPanel">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <span style="color: #4f46e5; font-size: 12px; font-weight: 700;">QUẢN TRỊ VIÊN</span>
+      <span style="font-size: 12px; color: var(--danger); font-weight: 700; cursor: pointer;" onclick="lockAdmin()">[Đóng]</span>
+    </div>
+    <div class="admin-grid">
+      <input type="file" id="fileUploader" accept=".xlsx, .xls" style="display: none;" onchange="handleExcelUpload(event)">
+      <button class="btn-admin-task" style="background: #6366f1;" id="btnImportText" onclick="document.getElementById('fileUploader').click()">📥 Nạp File Mới</button>
+      <button class="btn-admin-task" style="background: var(--success);" id="btnExportText" onclick="exportCompletedFile()">📤 Xuất File Xong</button>
+    </div>
+  </div>
+
+  <!-- 1. TÌM KIẾM THÙNG -->
+  <div class="card">
+    <span class="section-label">1. Tìm Kiếm Thùng Hàng</span>
+    <div class="search-wrap">
+      <input type="text" id="boxIdInput" class="search-box" placeholder="Nhập mã thùng (VD: A12, A49...)" oninput="onBoxInputSearch()" onkeydown="if(event.key==='Enter') onBoxInputSearch()" autofocus>
+      <button class="btn-search-exec" onclick="onBoxInputSearch()">Tìm</button>
+    </div>
+  </div>
+
+  <!-- DANH SÁCH THÙNG TÌM THẤY (CHỐNG VỠ DÒNG) -->
+  <div class="card" id="matchListCard" style="display: none; padding: 10px;">
+    <span class="section-label" style="color: var(--warning); margin-bottom: 6px;">Chọn đúng thùng bạn đang cầm:</span>
+    <div id="matchesContainer"></div>
+  </div>
+
+  <!-- THÔNG TIN CHI TIẾT THÙNG -->
+  <div class="card" id="boxDetails" style="display: none;">
+    <div class="banner-box banner-warning" id="conflictBanner"></div>
+
+    <div class="detail-grid">
+      <div class="grid-cell">
+        <span class="cell-title">Mã Thùng</span>
+        <span class="cell-data" id="dispBoxId" style="color: var(--primary);"></span>
+      </div>
+      <div class="grid-cell">
+        <span class="cell-title">Vị Trí Hiện Tại</span>
+        <span class="cell-data" id="dispCurrentBin">Chưa lên kệ</span>
+      </div>
+      <div class="grid-cell">
+        <span class="cell-title">Đơn Nhập</span>
+        <span class="cell-data" id="dispInbound" style="font-size: 14px;"></span>
+      </div>
+      <div class="grid-cell">
+        <span class="cell-title">Tổng Hàng</span>
+        <span class="cell-data"><span id="dispTotalQty"></span> hộp (<span id="dispSkuCount"></span> mã)</span>
+      </div>
+    </div>
+
+    <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+      <span class="section-label" style="margin-bottom: 0;">Danh Sách Mã Trong Thùng:</span>
+      <span id="dispOperatorTime" style="font-size: 11px; color: var(--text-sub); font-weight: 600;"></span>
+    </div>
+    <div class="sku-list" id="itemsList"></div>
+  </div>
+
+  <!-- 2. NHẬP VỊ TRÍ KỆ 6 SỐ -->
+  <div class="card" id="shelfSection" style="display: none;">
+    <span class="section-label">2. Nhập Vị Trí Kệ (Nhập đúng 6 số)</span>
+    <div class="shelf-input-container">
+      <div class="fixed-prefix" id="shelfPrefixDisp">S10</div>
+      <input type="text" id="binSuffixInput" class="six-digit-field" placeholder="000000" maxlength="6" inputmode="numeric" oninput="updateShelfPreview()" onkeydown="if(event.key==='Enter') submitShelfLocation(false)">
+    </div>
+    <div class="preview-line">
+      <span>Vị trí đầy đủ sẽ lưu:</span>
+      <strong id="shelfFullPreview">S10------</strong>
+    </div>
+    <button class="btn-confirm-shelf" id="btnSubmitShelf" onclick="submitShelfLocation(false)">XÁC NHẬN LÊN KỆ</button>
+  </div>
+
+  <!-- MODAL: ĐỔI TẦNG -->
+  <div id="areaSelectModal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-icon">🏢</div>
+      <div class="modal-head">Chọn Tầng Làm Việc</div>
+      <div class="modal-body">Hệ thống sẽ tự động gán mã tiền tố tương ứng khi bạn nhập kệ:</div>
+      <button class="floor-choice-btn choice-f1" onclick="selectArea(1)">
+        <span>TẦNG 1</span>
+        <span>Vị trí S10 ➔</span>
+      </button>
+      <button class="floor-choice-btn choice-f2" onclick="selectArea(2)">
+        <span>TẦNG 2</span>
+        <span>Vị trí S15 ➔</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL: ĐỔI TÊN NHÂN VIÊN -->
+  <div id="operatorModal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-icon">👤</div>
+      <div class="modal-head">Định Danh Nhân Viên</div>
+      <div class="modal-body">Nhập Tên hoặc Mã nhân viên để hệ thống ghi vết người lên kệ:</div>
+      <input type="text" id="operatorNameInput" placeholder="VD: HOÀNG, SƠN, NV01..." style="width: 100%; height: 44px; text-align: center; font-size: 16px; font-weight: 700; border: 1.5px solid var(--border); border-radius: 8px; margin-bottom: 14px; outline: none; text-transform: uppercase;" onkeydown="if(event.key==='Enter') saveOperatorName()">
+      <div class="modal-actions">
+        <button class="modal-btn btn-m-confirm" onclick="saveOperatorName()">Xác nhận</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ADMIN PIN -->
+  <div id="adminModal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-icon">🔐</div>
+      <div class="modal-head">Xác Thực Admin</div>
+      <div class="modal-body">Nhập mã PIN để mở tính năng nạp & xuất file:</div>
+      <input type="password" id="adminPinInput" placeholder="Nhập PIN" style="width: 100%; height: 44px; text-align: center; font-size: 18px; font-weight: 700; border: 1.5px solid var(--border); border-radius: 8px; margin-bottom: 14px; outline: none;" onkeydown="if(event.key==='Enter') checkAdminPin()">
+      <div class="modal-actions">
+        <button class="modal-btn btn-m-cancel" onclick="closeAdminModal()">Hủy</button>
+        <button class="modal-btn btn-m-confirm" onclick="checkAdminPin()">Mở khóa</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ALERT & CONFIRM DIALOG -->
+  <div id="customAlertModal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-icon" id="customAlertIcon">ℹ️</div>
+      <div class="modal-head" id="customAlertTitle">Thông Báo</div>
+      <div class="modal-body" id="customAlertMessage"></div>
+      <div class="modal-actions" id="customAlertButtons"></div>
+    </div>
+  </div>
+
+  <script>
+    // Dán URL Web App của Apps Script (kết thúc bằng /exec) vào đây
+    const API_URL = "https://script.google.com/macros/s/DAN_DEPLOYMENT_ID_VAO_DAY/exec";
+
+    // Gửi request tới Apps Script. Dùng text/plain để tránh lỗi CORS preflight.
+    async function callApi(action, data = {}) {
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(Object.assign({ action: action }, data))
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    }
+
+    let adminPin = "";
+    let isAdminUnlocked = false;
+    let currentOperator = localStorage.getItem("WAREHOUSE_OPERATOR") || "";
+    let savedFloor = localStorage.getItem("WAREHOUSE_FLOOR");
+    let currentFloor = savedFloor ? parseInt(savedFloor, 10) : null;
+
+    let WAREHOUSE_CACHE = [];
+    let BOX_MAP = {};
+
+    window.onload = function() {
+      if (!currentOperator) {
+        promptChangeOperator();
+      } else {
+        document.getElementById('dispCurrentOperator').innerText = currentOperator;
+      }
+
+      if (!currentFloor) {
+        openAreaSelectModal();
+      } else {
+        applyAreaUI(currentFloor);
+      }
+
+      loadWarehouseDataFromCloud();
+    };
+
+    function openAreaSelectModal() {
+      document.getElementById('areaSelectModal').style.display = 'flex';
+    }
+
+    function selectArea(floor) {
+      currentFloor = floor;
+      localStorage.setItem("WAREHOUSE_FLOOR", floor);
+      applyAreaUI(floor);
+      document.getElementById('areaSelectModal').style.display = 'none';
+      const input = document.getElementById('boxIdInput');
+      if (input) input.focus();
+    }
+
+    function applyAreaUI(floor) {
+      const badge = document.getElementById('dispCurrentArea');
+      const prefixDisp = document.getElementById('shelfPrefixDisp');
+      if (floor === 1) {
+        badge.innerText = "TẦNG 1";
+        badge.className = "tag-area-f1";
+        prefixDisp.innerText = "S10";
+      } else {
+        badge.innerText = "TẦNG 2";
+        badge.className = "tag-area-f2";
+        prefixDisp.innerText = "S15";
+      }
+      updateShelfPreview();
+    }
+
+    function updateShelfPreview() {
+      const prefix = currentFloor === 1 ? "S10" : "S15";
+      const suffix = document.getElementById('binSuffixInput').value.trim().toUpperCase();
+      const preview = document.getElementById('shelfFullPreview');
+      preview.innerText = suffix ? (prefix + suffix) : (prefix + "------");
+    }
+
+    function loadWarehouseDataFromCloud(onLoaded = null) {
+      const syncStatus = document.getElementById('syncStatus');
+      syncStatus.innerText = "⏳ Đang nạp...";
+      syncStatus.style.color = "var(--warning)";
+
+      callApi("load").then(function(res) {
+        if (res.success) {
+          buildCache(res.items);
+          syncStatus.innerText = `⚡ (${res.items.length} dòng)`;
+          syncStatus.style.color = "var(--success)";
+          if (typeof onLoaded === "function") onLoaded();
+        } else {
+          syncStatus.innerText = "❌ Lỗi nạp";
+          syncStatus.style.color = "var(--danger)";
+        }
+      }).catch(function() {
+        syncStatus.innerText = "❌ Lỗi kết nối";
+        syncStatus.style.color = "var(--danger)";
+      });
+    }
+
+    function buildCache(rawItems) {
+      WAREHOUSE_CACHE = rawItems;
+      BOX_MAP = {};
+
+      for (let i = 0; i < rawItems.length; i++) {
+        const item = rawItems[i];
+        const bId = item.boxId;
+        if (!BOX_MAP[bId]) {
+          BOX_MAP[bId] = {
+            boxId: bId,
+            inboundNo: item.inboundNo,
+            bin: item.bin,
+            operator: item.operator,
+            updatedTime: item.updatedTime,
+            totalQty: 0,
+            skuCount: 0,
+            items: []
+          };
+        }
+        BOX_MAP[bId].totalQty += item.qty;
+        BOX_MAP[bId].skuCount += 1;
+        BOX_MAP[bId].items.push(item);
+      }
+    }
+
+    function onBoxInputSearch() {
+      const keyword = document.getElementById('boxIdInput').value.trim().toUpperCase();
+      if (!keyword) {
+        document.getElementById('matchListCard').style.display = 'none';
+        document.getElementById('boxDetails').style.display = 'none';
+        document.getElementById('shelfSection').style.display = 'none';
+        return;
+      }
+
+      const matches = [];
+      const keys = Object.keys(BOX_MAP);
+      for (let i = 0; i < keys.length; i++) {
+        if (keys[i].indexOf(keyword) !== -1) {
+          matches.push(BOX_MAP[keys[i]]);
+        }
+      }
+
+      if (matches.length === 0) {
+        document.getElementById('matchListCard').style.display = 'none';
+        document.getElementById('boxDetails').style.display = 'none';
+        document.getElementById('shelfSection').style.display = 'none';
+        showAlert("Không tìm thấy", "Hàng chưa được nhập dữ liệu, không lên kệ !", "⚠️", () => {
+          document.getElementById('boxIdInput').select();
+        });
+        return;
+      }
+
+      if (matches.length === 1 && matches[0].boxId === keyword) {
+        selectBox(matches[0].boxId);
+      } else {
+        renderMatchList(matches);
+      }
+    }
+
+    function renderMatchList(list) {
+      const container = document.getElementById('matchesContainer');
+      container.innerHTML = '';
+
+      list.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'match-card';
+        card.onclick = () => selectBox(item.boxId);
+
+        let shelfBadge = '';
+        if (item.bin) {
+          shelfBadge = `<span class="shelf-badge badge-done">✓ ${item.bin}</span>`;
+        } else {
+          shelfBadge = `<span class="shelf-badge badge-empty">Chưa lên kệ</span>`;
+        }
+
+        const opTag = item.operator ? `<span class="operator-stamp">👤 ${item.operator}</span>` : '';
+
+        card.innerHTML = `
+          <div class="match-line-1">
+            <span class="match-box-title">${item.boxId}</span>
+            ${shelfBadge}
+          </div>
+          <div class="match-line-2">
+            <div>
+              <span class="inbound-chip">${item.inboundNo}</span>
+              <span class="qty-indicator">• ${item.totalQty} hộp</span>
+            </div>
+            ${opTag}
+          </div>
+        `;
+        container.appendChild(card);
+      });
+
+      document.getElementById('boxDetails').style.display = 'none';
+      document.getElementById('shelfSection').style.display = 'none';
+      document.getElementById('matchListCard').style.display = 'block';
+    }
+
+    let currentSelectedBoxId = "";
+
+    function selectBox(boxId) {
+      currentSelectedBoxId = boxId;
+      document.getElementById('boxIdInput').value = currentSelectedBoxId;
+      document.getElementById('matchListCard').style.display = 'none';
+
+      const data = BOX_MAP[boxId];
+      if (!data) return;
+
+      document.getElementById('dispBoxId').innerText = data.boxId;
+      document.getElementById('dispInbound').innerText = data.inboundNo;
+      document.getElementById('dispTotalQty').innerText = data.totalQty;
+      document.getElementById('dispSkuCount').innerText = data.skuCount;
+
+      const binElem = document.getElementById('dispCurrentBin');
+      const conflictBanner = document.getElementById('conflictBanner');
+      const timeElem = document.getElementById('dispOperatorTime');
+
+      if (data.bin) {
+        binElem.innerText = data.bin;
+        binElem.style.color = "var(--success)";
+
+        const upperBin = data.bin.toUpperCase();
+        if (upperBin.startsWith("S10") || upperBin.startsWith("S15")) {
+          document.getElementById('binSuffixInput').value = upperBin.substring(3);
+        } else {
+          document.getElementById('binSuffixInput').value = upperBin;
+        }
+
+        timeElem.innerText = `Lên bởi: ${data.operator} (${data.updatedTime})`;
+        conflictBanner.innerHTML = `⚠️ Thùng này đã được lên kệ tại [${data.bin}] bởi [${data.operator}].<br>Kiểm tra kỹ đơn nhập để tránh nhầm ngày!`;
+        conflictBanner.style.display = 'block';
+      } else {
+        binElem.innerText = "Chưa lên kệ";
+        binElem.style.color = "var(--text-sub)";
+        document.getElementById('binSuffixInput').value = "";
+        timeElem.innerText = "";
+        conflictBanner.style.display = 'none';
+      }
+
+      updateShelfPreview();
+
+      const itemsContainer = document.getElementById('itemsList');
+      itemsContainer.innerHTML = '';
+      data.items.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'sku-item';
+        row.innerHTML = `<span class="sku-name">${item.sku}</span><span class="sku-qty">${item.qty} hộp</span>`;
+        itemsContainer.appendChild(row);
+      });
+
+      const shelfSection = document.getElementById('shelfSection');
+      const boxDetails = document.getElementById('boxDetails');
+
+      boxDetails.style.border = '1px solid var(--border)';
+      shelfSection.style.display = 'block';
+      document.getElementById('binSuffixInput').focus();
+
+      boxDetails.style.display = 'block';
+    }
+
+    function submitShelfLocation(forceOverwrite = false) {
+      if (!currentOperator) {
+        promptChangeOperator();
+        return;
+      }
+      if (!currentFloor) {
+        openAreaSelectModal();
+        return;
+      }
+
+      const suffixInput = document.getElementById('binSuffixInput');
+      const suffix = suffixInput ? suffixInput.value.trim().toUpperCase() : "";
+
+      if (!currentSelectedBoxId) {
+        showAlert("Chưa chọn thùng", "Vui lòng chọn thùng hàng trước!", "⚠️");
+        return;
+      }
+      if (!suffix) {
+        showAlert("Thiếu vị trí", "Vui lòng nhập 6 số vị trí kệ!", "⚠️");
+        return;
+      }
+      if (suffix.length !== 6) {
+        showAlert("Sai định dạng", "Vị trí kệ yêu cầu nhập đúng 6 số!", "⚠️");
+        return;
+      }
+
+      const prefix = currentFloor === 1 ? "S10" : "S15";
+      const fullBinLocation = prefix + suffix;
+      const targetBoxId = currentSelectedBoxId;
+
+      if (BOX_MAP[targetBoxId]) {
+        BOX_MAP[targetBoxId].bin = fullBinLocation;
+        BOX_MAP[targetBoxId].operator = currentOperator;
+      }
+
+      const submitBtn = document.getElementById('btnSubmitShelf');
+      submitBtn.innerText = "⚡ Đang lưu...";
+      submitBtn.disabled = true;
+
+      callApi("updateLocation", {
+        boxId: targetBoxId,
+        bin: fullBinLocation,
+        operator: currentOperator,
+        forceOverwrite: forceOverwrite
+      })
+        .then(function(res) {
+          submitBtn.innerText = "XÁC NHẬN LÊN KỆ";
+          submitBtn.disabled = false;
+
+          if (res.success) {
+            if (BOX_MAP[targetBoxId]) {
+              BOX_MAP[targetBoxId].updatedTime = res.nowStr;
+            }
+
+            document.getElementById('boxIdInput').value = '';
+            document.getElementById('binSuffixInput').value = '';
+            updateShelfPreview();
+            document.getElementById('boxDetails').style.display = 'none';
+            document.getElementById('shelfSection').style.display = 'none';
+            currentSelectedBoxId = "";
+            document.getElementById('boxIdInput').focus();
+
+            showAlert("Thành công", `Thùng [${targetBoxId}] đã được lưu vào kệ [${fullBinLocation}].`, "✅");
+          } else if (res.isAlreadySaved) {
+            showConfirm(
+              "Cảnh báo trùng vị trí!",
+              `Thùng này ĐÃ ĐƯỢC LÊN KỆ tại kệ [${res.existingBin}] bởi [${res.existingUser}].\n\nBạn có CHẮC CHẮN muốn đổi sang [${fullBinLocation}] không?`,
+              "⚠️",
+              function() {
+                submitShelfLocation(true);
+              }
+            );
+          } else {
+            showAlert("Lỗi", res.message, "❌");
+          }
+        })
+        .catch(function(err) {
+          submitBtn.innerText = "XÁC NHẬN LÊN KỆ";
+          submitBtn.disabled = false;
+          showAlert("Lỗi kết nối", err.message, "❌");
+        });
+    }
+
+    function promptChangeOperator() {
+      document.getElementById('operatorModal').style.display = 'flex';
+      const input = document.getElementById('operatorNameInput');
+      input.value = currentOperator;
+      setTimeout(() => input.focus(), 150);
+    }
+
+    function saveOperatorName() {
+      const name = document.getElementById('operatorNameInput').value.trim().toUpperCase();
+      if (!name) {
+        showAlert("Thiếu tên", "Vui lòng nhập tên hoặc mã của bạn!", "⚠️");
+        return;
+      }
+      currentOperator = name;
+      localStorage.setItem("WAREHOUSE_OPERATOR", currentOperator);
+      document.getElementById('dispCurrentOperator').innerText = currentOperator;
+      document.getElementById('operatorModal').style.display = 'none';
+    }
+
+    let alertCallback = null;
+    function showAlert(title, message, icon = "ℹ️", onOk = null) {
+      document.getElementById('customAlertIcon').innerText = icon;
+      document.getElementById('customAlertTitle').innerText = title;
+      document.getElementById('customAlertMessage').innerHTML = message.replace(/\n/g, "<br>");
+      document.getElementById('customAlertButtons').innerHTML = `
+        <button class="modal-btn btn-m-confirm" onclick="closeCustomAlert()">Đã hiểu</button>
+      `;
+      alertCallback = onOk;
+      document.getElementById('customAlertModal').style.display = 'flex';
+    }
+
+    function showConfirm(title, message, icon = "❓", onConfirm = null) {
+      document.getElementById('customAlertIcon').innerText = icon;
+      document.getElementById('customAlertTitle').innerText = title;
+      document.getElementById('customAlertMessage').innerHTML = message.replace(/\n/g, "<br>");
+      document.getElementById('customAlertButtons').innerHTML = `
+        <button class="modal-btn btn-m-cancel" onclick="closeCustomAlert()">Hủy bỏ</button>
+        <button class="modal-btn btn-m-confirm" id="btnConfirmOk">Xác nhận</button>
+      `;
+      document.getElementById('btnConfirmOk').onclick = function() {
+        closeCustomAlert();
+        if (typeof onConfirm === "function") onConfirm();
+      };
+      document.getElementById('customAlertModal').style.display = 'flex';
+    }
+
+    function closeCustomAlert() {
+      document.getElementById('customAlertModal').style.display = 'none';
+      if (typeof alertCallback === "function") {
+        alertCallback();
+        alertCallback = null;
+      }
+    }
+
+    function openAdminModal() {
+      if (isAdminUnlocked) {
+        lockAdmin();
+      } else {
+        const modal = document.getElementById('adminModal');
+        modal.style.display = 'flex';
+        const input = document.getElementById('adminPinInput');
+        input.value = '';
+        setTimeout(() => input.focus(), 150);
+      }
+    }
+
+    function closeAdminModal() {
+      document.getElementById('adminModal').style.display = 'none';
+    }
+
+    async function checkAdminPin() {
+      const pin = document.getElementById('adminPinInput').value.trim();
+      let ok = false;
+      try {
+        ok = (await callApi("verifyPin", { pin: pin })).success;
+      } catch (err) {
+        showAlert("Lỗi kết nối", err.message, "❌");
+        return;
+      }
+      if (ok) {
+        adminPin = pin;
+        isAdminUnlocked = true;
+        closeAdminModal();
+        document.getElementById('adminPanel').style.display = 'block';
+        document.getElementById('btnAdminToggle').innerText = "🔓 Đang mở";
+        document.getElementById('btnAdminToggle').style.backgroundColor = "var(--success)";
+        document.getElementById('btnAdminToggle').style.color = "#ffffff";
+      } else {
+        showAlert("Sai mã PIN", "Mã PIN Admin không chính xác!", "❌");
+        document.getElementById('adminPinInput').value = '';
+        document.getElementById('adminPinInput').focus();
+      }
+    }
+
+    function lockAdmin() {
+      adminPin = "";
+      isAdminUnlocked = false;
+      document.getElementById('adminPanel').style.display = 'none';
+      document.getElementById('btnAdminToggle').innerText = "⚙️ Admin";
+      document.getElementById('btnAdminToggle').style.backgroundColor = "#e5e5ea";
+      document.getElementById('btnAdminToggle').style.color = "#3a3a3c";
+    }
+
+    // Nạp file Excel lưu trọn vẹn màu sắc vào Sheet
+    function handleExcelUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      showConfirm(
+        "Xác nhận nạp file",
+        `Nạp dữ liệu từ file:\n"${file.name}"?\nToàn bộ dữ liệu và màu sắc cũ sẽ được thay thế.`,
+        "📥",
+        function() {
+          const importBtn = document.getElementById('btnImportText');
+          importBtn.innerText = "⏳ Đang đọc...";
+          importBtn.disabled = true;
+
+          const reader = new FileReader();
+          reader.onload = async function(e) {
+            try {
+              const buffer = e.target.result;
+              const workbook = new ExcelJS.Workbook();
+              await workbook.xlsx.load(buffer);
+              
+              const worksheet = workbook.worksheets[0];
+              const totalRows = worksheet.rowCount;
+
+              if (totalRows < 2) {
+                showAlert("File rỗng", "File Excel không có dữ liệu hàng!", "⚠️");
+                importBtn.innerText = "📥 Nạp File Mới";
+                importBtn.disabled = false;
+                return;
+              }
+
+              const rows = [];
+              const bgColors = [];
+              const fontColors = [];
+
+              for (let r = 2; r <= totalRows; r++) {
+                const row = worksheet.getRow(r);
+                const val1 = row.getCell(1).value !== null ? String(row.getCell(1).text || row.getCell(1).value).trim() : "";
+                const val2 = row.getCell(2).value !== null ? String(row.getCell(2).text || row.getCell(2).value).trim() : "";
+                const val3 = row.getCell(3).value !== null ? String(row.getCell(3).text || row.getCell(3).value).trim() : "";
+                const val4 = row.getCell(4).value !== null ? (Number(row.getCell(4).value) || 0) : 0;
+                const val5 = row.getCell(5).value !== null ? String(row.getCell(5).text || row.getCell(5).value).trim() : "";
+
+                if (!val1 && !val2 && !val3) continue;
+
+                rows.push([val1, val2, val3, val4, val5]);
+
+                const rowBgs = [];
+                const rowFonts = [];
+                for (let c = 1; c <= 5; c++) {
+                  const cell = row.getCell(c);
+                  
+                  let bg = "#ffffff";
+                  if (cell.fill) {
+                    if (cell.fill.fgColor && cell.fill.fgColor.argb) {
+                      const argb = String(cell.fill.fgColor.argb);
+                      bg = (argb.length === 8) ? ("#" + argb.substring(2)) : ("#" + argb);
+                    } else if (cell.fill.fgColor && cell.fill.fgColor.theme !== undefined) {
+                      const t = cell.fill.fgColor.theme;
+                      const tint = cell.fill.fgColor.tint || 0;
+                      if (t === 0 || tint < 0) {
+                        bg = "#000000";
+                      } else if (t === 1 && tint === 0) {
+                        bg = "#ffffff";
+                      } else {
+                        bg = "#333333";
+                      }
+                    }
+                  }
+                  rowBgs.push(bg);
+
+                  let fontColor = "#000000";
+                  if (cell.font && cell.font.color && cell.font.color.argb) {
+                    const argb = String(cell.font.color.argb);
+                    fontColor = (argb.length === 8) ? ("#" + argb.substring(2)) : ("#" + argb);
+                  }
+                  rowFonts.push(fontColor);
+                }
+                bgColors.push(rowBgs);
+                fontColors.push(rowFonts);
+              }
+
+              importBtn.innerText = "⏳ Đang ghi Sheet...";
+
+              callApi("import", {
+                pin: adminPin,
+                payload: {
+                  values: rows,
+                  bgColors: bgColors,
+                  fontColors: fontColors
+                }
+              }).then(function(res) {
+                importBtn.innerText = "📥 Nạp File Mới";
+                importBtn.disabled = false;
+                if (res.success) {
+                  showAlert("Thành công", `Đã nạp ${res.count} dòng dữ liệu!\nToàn bộ định dạng đã được lưu chuẩn xác.`, "🎉", () => {
+                    lockAdmin();
+                    loadWarehouseDataFromCloud();
+                  });
+                } else {
+                  showAlert("Lỗi lưu dữ liệu", res.message, "❌");
+                }
+              }).catch(function(err) {
+                importBtn.innerText = "📥 Nạp File Mới";
+                importBtn.disabled = false;
+                showAlert("Lỗi kết nối", err.message, "❌");
+              });
+
+            } catch (err) {
+              importBtn.innerText = "📥 Nạp File Mới";
+              importBtn.disabled = false;
+              showAlert("Lỗi đọc file", err.message, "❌");
+            }
+          };
+          reader.readAsArrayBuffer(file);
+        }
+      );
+      event.target.value = "";
+    }
+
+    function exportCompletedFile() {
+      const exportBtn = document.getElementById('btnExportText');
+      exportBtn.innerText = "⏳ Đang tạo...";
+      exportBtn.disabled = true;
+
+      callApi("exportUrl", { pin: adminPin })
+        .then(function(res) {
+          exportBtn.innerText = "📤 Xuất File Xong";
+          exportBtn.disabled = false;
+          if (!res.success || !res.url) {
+            showAlert("Lỗi", res.message || "Không thể lấy link tải file!", "❌");
+            return;
+          }
+          window.location.href = res.url;
+        })
+        .catch(function(err) {
+          exportBtn.innerText = "📤 Xuất File Xong";
+          exportBtn.disabled = false;
+          showAlert("Lỗi xuất file", err.message, "❌");
+        });
+    }
+  </script>
+</body>
+</html>
