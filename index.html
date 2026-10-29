@@ -175,32 +175,28 @@
     .ghost-btn:active { border-color: var(--accent); color: var(--accent-dark); background: var(--accent-soft); }
 
     .bin-panel { margin-top: 14px; }
-    .slots { display: flex; align-items: stretch; gap: 6px; }
+    .bin-field { display: flex; align-items: stretch; gap: 8px; }
     .slot-pre {
       display: flex; align-items: center; padding: 0 12px; border-radius: 14px;
       background: var(--accent); color: var(--accent-ink); font-family: var(--mono); font-size: 22px; font-weight: 800;
     }
-    .slot {
-      flex: 1; min-width: 0; height: 58px; border-radius: 14px; border: 2px solid var(--line-strong); background: var(--surface);
-      display: flex; align-items: center; justify-content: center;
-      font-family: var(--mono); font-size: 30px; font-weight: 800; color: var(--text);
+    .bin-input {
+      flex: 1; min-width: 0; height: 64px; padding: 0 12px; border-radius: 14px;
+      border: 2px solid var(--line-strong); background: var(--surface); color: var(--text); outline: none;
+      font-family: var(--mono); font-size: 28px; font-weight: 800; letter-spacing: 0.16em;
+      box-shadow: var(--shadow);
     }
-    .slot.gap { margin-left: 8px; }
-    .slot.filled { border-color: var(--text-3); }
-    .slot.current { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
-    .slot.current::after { content: ""; width: 2px; height: 30px; background: var(--accent); animation: blink 1s infinite; }
-    .slot-help { margin-top: 8px; font-size: 14px; color: var(--text-2); }
-
-    /* Phím nổi như phím thật, bấm xuống thì lún */
-    .keypad { margin-top: 12px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-    .key {
-      height: 54px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface);
-      box-shadow: 0 3px 0 #cfd6df; color: var(--text);
-      font-family: var(--mono); font-size: 27px; font-weight: 700;
-      transition: transform 0.05s, box-shadow 0.05s;
+    .bin-input::placeholder { color: #c5ccd6; }
+    .bin-input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+    .bin-save {
+      flex-shrink: 0; width: 88px; height: 64px; border: none; border-radius: 14px;
+      background: var(--accent); color: var(--accent-ink); font-size: 19px; font-weight: 800;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
     }
-    .key:active { transform: translateY(3px); box-shadow: 0 0 0 #cfd6df; background: var(--accent-soft); }
-    .key.fn { font-family: var(--sans); font-size: 16px; font-weight: 700; color: var(--text-2); background: var(--surface-2); }
+    .bin-save:active { filter: brightness(0.92); }
+    .bin-save:disabled { background: #dfe4eb; color: var(--text-3); box-shadow: none; }
+    .bin-help { margin-top: 8px; font-size: 14px; color: var(--text-2); }
+    .bin-help b { font-family: var(--mono); font-size: 16px; color: var(--text); }
 
     .cta {
       width: 100%; height: 64px; margin-top: 12px; border: none; border-radius: 18px;
@@ -210,13 +206,6 @@
     .cta:active { filter: brightness(0.92); }
     .cta:disabled { background: #dfe4eb; color: var(--text-3); box-shadow: none; }
     .cta.busy { opacity: 0.7; }
-    /* Màn hình cao thì phím to hơn */
-    @media (min-height: 760px) {
-      .slot { height: 66px; }
-      .key { height: 60px; }
-    }
-    /* Nút lưu luôn nằm trong tầm tay, kể cả điện thoại màn ngắn */
-    .bin-panel .cta { position: sticky; bottom: calc(10px + env(safe-area-inset-bottom)); }
 
     /* LỚP PHỦ: HỘP THOẠI, MENU, THIẾT LẬP, THÀNH CÔNG */
     .overlay {
@@ -367,10 +356,14 @@
 
       <div class="bin-panel" id="binPanel">
         <span class="eyebrow" id="binLabel">Bước 2 · Vị trí kệ</span>
-        <div class="slots" id="slots"></div>
-        <div class="slot-help">Nhập 6 số trên nhãn kệ, hoặc quét mã kệ</div>
-        <div class="keypad" id="keypad"></div>
-        <button class="cta" id="btnSave" onclick="save(false)" disabled>Nhập đủ 6 số</button>
+        <!-- Ô nhập dùng bàn phím số của điện thoại; nút Lưu nằm cạnh ô để không bị bàn phím che -->
+        <div class="bin-field">
+          <span class="slot-pre" id="slotPre">S15</span>
+          <input id="binInput" class="bin-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="9"
+                 placeholder="000000" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done">
+          <button class="bin-save" id="btnSave" onclick="save()" disabled>Lưu</button>
+        </div>
+        <div class="bin-help" id="binHelp"></div>
       </div>
     </section>
   </div>
@@ -452,7 +445,6 @@
     let BOX_LIST = [];
     let selectedId = "";
     let digits = "";
-    let scanPrefix = "";   // đang nhận mã kệ quét bằng súng, dạng S15xxxxxx
     let adminPin = "";
     let lastLoadAt = 0;
     let loading = false;
@@ -462,7 +454,8 @@
     const prefix = () => (floor === 1 ? "S10" : "S15");
 
     document.addEventListener("DOMContentLoaded", function() {
-      buildKeypad();
+      $("binInput").addEventListener("input", onBinInput);
+      $("binInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); if (digits.length === 6) save(); } });
       applyFloor();
       renderOperator();
       $("boxInput").addEventListener("input", () => search(false));
@@ -637,9 +630,10 @@
     function selectBox(id) {
       const b = BOX_MAP[id];
       if (!b) return;
+      // Kết quả lưu ngầm của chính thùng đang mở chỉ cập nhật thông tin, không xoá số đang gõ
+      const same = id === selectedId && !$("viewBox").hidden;
       selectedId = id;
-      digits = "";
-      scanPrefix = "";
+      if (!same) digits = "";
       $("boxInput").blur();
 
       $("bxId").textContent = b.boxId;
@@ -670,99 +664,79 @@
         $("binLabel").textContent = "Bước 2 · Vị trí kệ";
       }
 
+      if (!same) $("binInput").value = "";
       renderDigits();
       $("viewScan").hidden = true;
       $("viewBox").hidden = false;
       window.scrollTo(0, 0);
+      // Thùng chưa lên kệ: con trỏ vào ô kệ luôn để bàn phím số tự bật lên
+      if (!b.bin && !same) $("binInput").focus();
     }
 
-    // Thùng đã lên kệ: phải bấm rõ ràng mới hiện bàn phím nhập kệ mới
+    // Thùng đã lên kệ: phải bấm rõ ràng mới hiện ô nhập kệ mới
     function startMove() {
       $("btnMove").hidden = true;
       $("binPanel").hidden = false;
-      $("binPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+      $("binInput").focus();
     }
 
     function backToScan(focus = true) {
       selectedId = "";
       digits = "";
-      scanPrefix = "";
       $("boxInput").value = "";
+      $("binInput").value = "";
       $("viewBox").hidden = true;
       $("viewScan").hidden = false;
       search(false);
       if (focus) $("boxInput").focus();
     }
 
-    function buildKeypad() {
-      const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "back"];
-      const labels = { clear: "Xoá hết", back: "⌫" };
-      const pad = $("keypad");
-      pad.innerHTML = keys.map((k) => `<button class="key${labels[k] ? " fn" : ""}" data-k="${k}">${labels[k] || k}</button>`).join("");
-      pad.querySelectorAll(".key").forEach((el) => { el.onclick = () => pressKey(el.dataset.k); });
-    }
-
-    function pressKey(k) {
-      if (k === "back") digits = digits.slice(0, -1);
-      else if (k === "clear") digits = "";
-      else if (digits.length < 6) digits += k;
-      vibrate(8);
+    // Chỉ giữ số; quét mã kệ đầy đủ "S15xxxxxx" thì bỏ tiền tố và kiểm tra đúng tầng
+    function onBinInput() {
+      const inp = $("binInput");
+      let v = inp.value.toUpperCase().replace(/\s/g, "");
+      if (v.startsWith("S")) {
+        if (v.length < 3) { digits = ""; renderDigits(); return; }
+        const p = v.slice(0, 3);
+        if (p !== prefix()) {
+          inp.value = "";
+          digits = "";
+          renderDigits();
+          inp.blur();
+          alertDlg("Sai tầng", `Mã kệ ${p}… thuộc tầng khác.\nBạn đang chọn ${prefix()} (Tầng ${floor}).`, "🏢", () => inp.focus());
+          return;
+        }
+        v = v.slice(3);
+      }
+      digits = v.replace(/\D/g, "").slice(0, 6);
+      inp.value = digits;
       renderDigits();
     }
 
     function renderDigits() {
-      let html = `<span class="slot-pre">${prefix()}</span>`;
-      for (let i = 0; i < 6; i++) {
-        const cls = ["slot"];
-        if (i === 2 || i === 4) cls.push("gap");
-        if (i < digits.length) cls.push("filled");
-        if (i === digits.length) cls.push("current");
-        html += `<span class="${cls.join(" ")}">${digits[i] || ""}</span>`;
-      }
-      $("slots").innerHTML = html;
-      const btn = $("btnSave");
-      btn.disabled = digits.length !== 6;
-      btn.textContent = digits.length === 6 ? `Lên kệ ${prefix()}${digits}` : `Nhập đủ 6 số (${digits.length}/6)`;
+      $("slotPre").textContent = prefix();
+      $("btnSave").disabled = digits.length !== 6;
+      $("binHelp").innerHTML = digits.length === 6
+        ? `Sẽ lưu vào <b>${prefix()}${digits}</b> · bấm Lưu hoặc Enter`
+        : `Nhập 6 số trên nhãn kệ, hoặc quét mã kệ (${digits.length}/6)`;
     }
 
     function anyOverlayOpen() {
       return !$("dlg").hidden || !$("menu").hidden || !$("setup").hidden || !$("flash").hidden;
     }
 
-    // Bàn phím vật lý / súng quét khi đang ở bước nhập kệ
+    // Súng quét / bàn phím rời gõ khi con trỏ không nằm trong ô nào: đưa vào ô nhập kệ
     function onGlobalKey(e) {
       if (!$("flash").hidden) hideFlash();
       if (anyOverlayOpen() || $("viewBox").hidden || $("binPanel").hidden) return;
       if (e.target && e.target.tagName === "INPUT") return;
-      const k = e.key;
-      if (k === "s" || k === "S") {
-        // Quét mã kệ đầy đủ "S15xxxxxx": bỏ tiền tố, kiểm tra đúng tầng
-        scanPrefix = "S";
-        digits = "";
-        renderDigits();
-      } else if (/^[0-9]$/.test(k)) {
+      if (/^[0-9sS]$/.test(e.key)) {
         e.preventDefault();
-        if (scanPrefix) {
-          scanPrefix += k;
-          if (scanPrefix.length === 3) {
-            const p = scanPrefix;
-            scanPrefix = "";
-            if (p !== prefix()) {
-              digits = "";
-              renderDigits();
-              alertDlg("Sai tầng", `Mã kệ ${p}… thuộc tầng khác.\nBạn đang chọn ${prefix()} (Tầng ${floor}).`, "🏢");
-            }
-          }
-          return;
-        }
-        pressKey(k);
-      } else if (k === "Backspace") {
-        e.preventDefault();
-        pressKey("back");
-      } else if (k === "Enter") {
-        e.preventDefault();
-        if (digits.length === 6) save(false);
-      } else if (k === "Escape") {
+        const inp = $("binInput");
+        inp.value += e.key;
+        inp.focus();
+        onBinInput();
+      } else if (e.key === "Escape") {
         backToScan();
       }
     }
