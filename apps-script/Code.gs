@@ -32,6 +32,11 @@ function doPost(e) {
         return updateLocation(req.boxId, req.bin, req.operator, req.forceOverwrite);
       }));
 
+    case 'updateBatch':
+      return jsonOut(withLock(function() {
+        return { success: true, results: updateLocations(req.items) };
+      }));
+
     case 'verifyPin':
       return jsonOut({ success: isValidPin(req.pin) });
 
@@ -118,74 +123,101 @@ function loadAllWarehouseData() {
   }
 }
 
-// 2. Ghi nhận vị trí kệ siêu tốc (chỉ đọc & ghi 1 lần duy nhất)
+// 2. Ghi nhận vị trí kệ: chỉ đọc cột mã thùng, chỉ ghi đúng các dòng của thùng đó
 function updateLocation(boxId, binLocation, operatorName, forceOverwrite) {
+  return updateLocations([{ boxId: boxId, bin: binLocation, operator: operatorName, forceOverwrite: forceOverwrite }])[0];
+}
+
+// Lưu nhiều thùng trong một lần gọi (máy gửi dồn khi mạng chậm)
+function updateLocations(list) {
+  list = list || [];
+  var failAll = function(message) {
+    return list.map(function() { return { success: false, message: message }; });
+  };
   try {
-    var cleanBoxId = String(boxId || "").trim().toUpperCase();
-    var cleanBin = String(binLocation || "").trim().toUpperCase();
-    var cleanOperator = String(operatorName || "").trim();
-
-    if (!cleanBoxId || !cleanBin) {
-      return { success: false, message: "Mã thùng hoặc vị trí kệ không hợp lệ!" };
-    }
-
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
-    if (!sheet) return { success: false, message: "Không tìm thấy sheet " + SHEET_NAME + "!" };
+    if (!sheet) return failAll("Không tìm thấy sheet " + SHEET_NAME + "!");
 
     var lastRow = sheet.getLastRow();
-    if (lastRow <= 1) return { success: false, message: "Bảng tính không có dữ liệu!" };
+    if (lastRow <= 1) return failAll("Bảng tính không có dữ liệu!");
 
-    var range = sheet.getRange(2, 1, lastRow - 1, 7);
-    var rangeData = range.getValues();
+    // Đọc cột B (mã thùng) một lần cho cả lô, lập chỉ mục mã thùng -> các số dòng
+    var ids = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
+    var index = {};
+    for (var i = 0; i < ids.length; i++) {
+      var id = String(ids[i][0]).trim().toUpperCase();
+      if (!id) continue;
+      if (!index[id]) index[id] = [];
+      index[id].push(i + 2);
+    }
 
-    // Kiểm tra trùng lặp vị trí đã có người lên kệ trước
-    var existingBin = "";
-    var existingUser = "";
-    for (var k = 0; k < rangeData.length; k++) {
-      if (String(rangeData[k][1]).trim().toUpperCase() === cleanBoxId) {
-        if (rangeData[k][4]) {
-          existingBin = String(rangeData[k][4]).trim();
-          existingUser = String(rangeData[k][5] || "").trim();
-          break;
+    var now = new Date();
+    var nowStr = Utilities.formatDate(now, "Asia/Taipei", "yyyy-MM-dd HH:mm:ss");
+    var nowShort = Utilities.formatDate(now, "Asia/Taipei", "HH:mm dd/MM");
+    return list.map(function(item) {
+      try {
+        return applyLocation_(sheet, index, item || {}, nowStr, nowShort);
+      } catch (err) {
+        return { success: false, message: err.toString() };
+      }
+    });
+  } catch (err) {
+    return failAll(err.toString());
+  }
+}
+
+function applyLocation_(sheet, index, item, nowStr, nowShort) {
+  var cleanBoxId = String(item.boxId || "").trim().toUpperCase();
+  var cleanBin = String(item.bin || "").trim().toUpperCase();
+  var cleanOperator = String(item.operator || "").trim();
+
+  if (!cleanBoxId || !cleanBin) {
+    return { success: false, message: "Mã thùng hoặc vị trí kệ không hợp lệ!" };
+  }
+
+  var rows = index[cleanBoxId];
+  if (!rows || !rows.length) {
+    return { success: false, message: "Không tìm thấy mã thùng để cập nhật!" };
+  }
+  var runs = toRuns_(rows);
+
+  // Kiểm tra trùng lặp vị trí đã có người lên kệ trước
+  if (!item.forceOverwrite) {
+    for (var r = 0; r < runs.length; r++) {
+      var cur = sheet.getRange(runs[r][0], 5, runs[r][1], 2).getValues();
+      for (var k = 0; k < cur.length; k++) {
+        if (cur[k][0]) {
+          return {
+            success: false,
+            isAlreadySaved: true,
+            existingBin: String(cur[k][0]).trim(),
+            existingUser: String(cur[k][1] || "").trim(),
+            message: "Thùng này đã được lên kệ trước đó!"
+          };
         }
       }
     }
-
-    if (existingBin && !forceOverwrite) {
-      return {
-        success: false,
-        isAlreadySaved: true,
-        existingBin: existingBin,
-        existingUser: existingUser,
-        message: "Thùng này đã được lên kệ trước đó!"
-      };
-    }
-
-    var nowStr = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd HH:mm:ss");
-    var updatedCount = 0;
-    for (var i = 0; i < rangeData.length; i++) {
-      if (String(rangeData[i][1]).trim().toUpperCase() === cleanBoxId) {
-        rangeData[i][4] = cleanBin;
-        rangeData[i][5] = cleanOperator;
-        rangeData[i][6] = nowStr;
-        updatedCount++;
-      }
-    }
-
-    if (updatedCount > 0) {
-      range.setValues(rangeData);
-      return {
-        success: true,
-        count: updatedCount,
-        nowStr: Utilities.formatDate(new Date(), "Asia/Taipei", "HH:mm dd/MM")
-      };
-    } else {
-      return { success: false, message: "Không tìm thấy mã thùng để cập nhật!" };
-    }
-
-  } catch (err) {
-    return { success: false, message: err.toString() };
   }
+
+  // Chỉ ghi 3 cột 儲位 / 人員 / 時間 của các dòng thuộc thùng này
+  for (var w = 0; w < runs.length; w++) {
+    var vals = [];
+    for (var n = 0; n < runs[w][1]; n++) vals.push([cleanBin, cleanOperator, nowStr]);
+    sheet.getRange(runs[w][0], 5, runs[w][1], 3).setValues(vals);
+  }
+
+  return { success: true, count: rows.length, nowStr: nowShort };
+}
+
+// Gom các số dòng liền nhau thành đoạn [dòng đầu, số dòng] để ghi một lần
+function toRuns_(rows) {
+  var runs = [];
+  for (var i = 0; i < rows.length; i++) {
+    var last = runs[runs.length - 1];
+    if (last && last[0] + last[1] === rows[i]) last[1]++;
+    else runs.push([rows[i], 1]);
+  }
+  return runs;
 }
 
 // 3. Nạp dữ liệu Excel giữ nguyên định dạng và màu sắc

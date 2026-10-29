@@ -290,11 +290,23 @@
     .setup .cta { margin-top: 30px; }
     .setup-cancel { width: 100%; margin-top: 10px; height: 52px; border: none; background: none; color: var(--text-2); font-size: 16px; font-weight: 700; }
 
+    /* Màn xanh chỉ để báo, không chặn thao tác: chạm/quét tiếp được ngay */
     .flash {
       position: fixed; inset: 0; z-index: 60; background: var(--ok); color: #ffffff;
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
-      animation: flashIn 0.18s ease-out; text-align: center; padding: 20px;
+      animation: flashIn 0.12s ease-out; text-align: center; padding: 20px; pointer-events: none;
     }
+
+    /* Trạng thái lưu lên Sheet trong danh sách vừa lưu */
+    .recent-row .st { width: 24px; text-align: center; font-size: 15px; font-weight: 800; }
+    .st-pending { color: var(--warn); }
+    .st-saved { color: var(--ok); }
+    .st-conflict, .st-failed { color: var(--err); }
+    .recent-row.bad .bin { color: var(--err); text-decoration: line-through; }
+
+    /* Kết quả sẽ được chọn khi bấm Enter */
+    .row-best { border: 2px solid var(--accent); }
+    .enter-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-dark); font-size: 12px; font-weight: 800; }
     @keyframes flashIn { from { opacity: 0; } }
     .flash-check { width: 96px; height: 96px; border-radius: 50%; background: #ffffff; color: var(--ok); display: flex; align-items: center; justify-content: center; font-size: 54px; font-weight: 800; margin-bottom: 14px; }
     .flash-box { font-family: var(--mono); font-size: 20px; font-weight: 700; word-break: break-all; opacity: 0.9; }
@@ -312,7 +324,7 @@
       </button>
       <div class="hdr-mid">
         <div class="hdr-op" id="hdrOp">Chưa nhập tên</div>
-        <button class="sync" id="sync" data-s="loading" onclick="loadData()">
+        <button class="sync" id="sync" data-s="loading" onclick="syncTap()">
           <span class="dot"></span><span id="syncText">Đang tải dữ liệu…</span>
         </button>
       </div>
@@ -400,7 +412,7 @@
   </div>
 
   <!-- LƯU THÀNH CÔNG -->
-  <div class="flash" id="flash" hidden onclick="hideFlash()">
+  <div class="flash" id="flash" hidden>
     <div class="flash-check">✓</div>
     <div class="flash-box" id="flashBox"></div>
     <div class="flash-arrow">↓</div>
@@ -444,6 +456,7 @@
     let adminPin = "";
     let lastLoadAt = 0;
     let loading = false;
+    let lastSyncText = "";
     const recent = [];
 
     const prefix = () => (floor === 1 ? "S10" : "S15");
@@ -462,9 +475,18 @@
         if (document.visibilityState === "visible" && Date.now() - lastLoadAt > 120000) loadData(true);
       });
 
+      // Có mạng lại thì gửi ngay hàng chờ
+      window.addEventListener("online", flushNow);
+      window.addEventListener("beforeunload", (e) => { if (outbox.length) { e.preventDefault(); e.returnValue = ""; } });
+
+      // Hàng chờ còn sót từ lần mở trước: hiện lại trong "Vừa lưu" và gửi tiếp
+      outbox.slice().reverse().forEach((o) => recent.push({ boxId: o.boxId, bin: o.bin, time: clock(o.at), status: "pending" }));
+
       if (!operator || !floor) openSetup();
       else $("boxInput").focus();
+      renderRecent();
       loadData();
+      flush();
     });
 
     // ---------- DỮ LIỆU ----------
@@ -476,12 +498,15 @@
         .then((res) => {
           if (!res.success) throw new Error(res.message || "Lỗi tải dữ liệu");
           buildCache(res.items);
+          applyOutbox();
           lastLoadAt = Date.now();
-          setSync("ok", `${res.items.length} dòng · cập nhật ${clock()}`);
+          lastSyncText = `${res.items.length} dòng · cập nhật ${clock()}`;
+          loading = false;
+          refreshSync();
           renderProgress();
           if (!$("viewScan").hidden && $("boxInput").value.trim()) search(false);
         })
-        .catch(() => setSync("err", "Mất kết nối · chạm để thử lại"))
+        .catch(() => { if (!outbox.length) setSync("err", "Mất kết nối · chạm để thử lại"); })
         .finally(() => { loading = false; });
     }
 
@@ -544,8 +569,16 @@
 
       const exact = BOX_MAP[kw];
       if (exact && (fromEnter || matches.length === 1)) return selectBox(kw);
-      if (fromEnter && matches.length === 1) return selectBox(matches[0].boxId);
-      renderResults(matches, kw);
+      // Gõ đuôi mã (VD "A10") + Enter: chọn luôn nếu chỉ một thùng có đuôi đó
+      const best = bestMatch(matches, kw);
+      if (fromEnter && best) return selectBox(best.boxId);
+      renderResults(matches, kw, best);
+    }
+
+    function bestMatch(matches, kw) {
+      if (matches.length === 1) return matches[0];
+      const tail = matches.filter((b) => b.boxId.endsWith(kw));
+      return tail.length === 1 ? tail[0] : null;
     }
 
     function showHint(msg, isErr, shake) {
@@ -567,16 +600,17 @@
       return esc(id.slice(0, i)) + "<mark>" + esc(kw) + "</mark>" + esc(id.slice(i + kw.length));
     }
 
-    function renderResults(list, kw) {
+    function renderResults(list, kw, best) {
       const MAX = 40;
-      // Khớp chính xác lên đầu, rồi đến thùng chưa lên kệ
+      // Thùng chọn bằng Enter lên đầu, rồi khớp đuôi mã, rồi thùng chưa lên kệ
       const sorted = list.slice().sort((a, b) =>
-        (b.boxId === kw) - (a.boxId === kw) || (!!a.bin - !!b.bin) || a.boxId.localeCompare(b.boxId));
+        (b === best) - (a === best) || (b.boxId.endsWith(kw) - a.boxId.endsWith(kw)) ||
+        (!!a.bin - !!b.bin) || a.boxId.localeCompare(b.boxId));
       let html = sorted.slice(0, MAX).map((b) => `
-        <button class="row" data-id="${esc(b.boxId)}">
+        <button class="row${b === best ? " row-best" : ""}" data-id="${esc(b.boxId)}">
           <span class="row-main">
             <span class="row-id">${highlight(b.boxId, kw)}</span>
-            <span class="row-meta">${esc(b.inboundNo)} · ${b.totalQty} hộp · ${b.skuCount} mã</span>
+            <span class="row-meta">${esc(b.inboundNo)} · ${b.totalQty} hộp · ${b.skuCount} mã${b === best ? `<span class="enter-tag">Enter ↵</span>` : ""}</span>
           </span>
           ${b.bin ? `<span class="pill pill-done">${esc(b.bin)}</span>` : `<span class="pill pill-empty">Chưa lên kệ</span>`}
         </button>`).join("");
@@ -589,9 +623,12 @@
     function renderRecent() {
       const wrap = $("recentWrap");
       wrap.hidden = !recent.length || !!$("boxInput").value.trim();
+      const icons = { pending: "⏳", saved: "✓", conflict: "!", failed: "✕" };
+      const titles = { pending: "Đang lưu lên Sheet", saved: "Đã lưu lên Sheet", conflict: "Người khác đã lên kệ thùng này", failed: "Không lưu được" };
       $("recentList").innerHTML = recent.map((r) => `
-        <button class="recent-row" data-id="${esc(r.boxId)}">
-          <span class="id">${esc(r.boxId)}</span><span class="bin">${esc(r.bin)}</span><span class="t">${esc(r.time)}</span>
+        <button class="recent-row${r.status === "conflict" || r.status === "failed" ? " bad" : ""}" data-id="${esc(r.boxId)}">
+          <span class="id">${esc(r.boxId)}</span><span class="bin">${esc(r.bin)}</span>
+          <span class="st st-${r.status}" title="${titles[r.status] || ""}">${icons[r.status] || ""}</span><span class="t">${esc(r.time)}</span>
         </button>`).join("");
       $("recentList").querySelectorAll(".recent-row").forEach((el) => { el.onclick = () => selectBox(el.dataset.id); });
     }
@@ -615,9 +652,10 @@
       const st = $("bxState");
       if (b.bin) {
         const otherFloor = !b.bin.toUpperCase().startsWith(prefix());
+        const pending = outbox.some((o) => o.boxId === id);
         st.className = "state state-done";
         st.innerHTML = `
-          <div class="state-label">Đã lên kệ</div>
+          <div class="state-label">Đã lên kệ${pending ? " · đang lưu lên Sheet ⏳" : ""}</div>
           <div class="state-bin">${esc(b.bin)}</div>
           <div class="state-meta">bởi ${esc(b.operator || "?")}${b.updatedTime ? " · " + esc(b.updatedTime) : ""} — kiểm tra kỹ đơn nhập để tránh nhầm ngày</div>
           ${otherFloor ? `<div class="state-note">Kệ này không thuộc tầng bạn đang chọn (${prefix()}).</div>` : ""}`;
@@ -729,53 +767,185 @@
       }
     }
 
-    function save(forceOverwrite) {
+    // Bấm lưu là xong ngay trên máy; việc ghi lên Sheet chạy ngầm qua hàng chờ
+    function save() {
       if (!operator || !floor) { openSetup(); return; }
       if (!selectedId || digits.length !== 6) return;
 
       const target = selectedId;
       const bin = prefix() + digits;
-      const btn = $("btnSave");
-      btn.disabled = true;
-      btn.classList.add("busy");
-      btn.textContent = "Đang lưu…";
+      const b = BOX_MAP[target];
+      const item = {
+        boxId: target, bin: bin, operator: operator,
+        // Thùng đã có kệ thì người dùng đã bấm "Chuyển sang kệ khác", cho ghi đè luôn
+        force: !!(b && b.bin),
+        prevBin: b ? b.bin : "", prevOperator: b ? b.operator : "", prevTime: b ? b.updatedTime : "",
+        at: Date.now()
+      };
+      if (b) { b.bin = bin; b.operator = operator; b.updatedTime = ""; }
+      addRecent(target, bin);
+      renderProgress();
+      // Focus ô tìm ngay để quét thùng kế tiếp
+      backToScan(true);
+      showFlash(target, bin);
+      enqueueSave(item);
+    }
 
-      callApi("updateLocation", { boxId: target, bin: bin, operator: operator, forceOverwrite: forceOverwrite })
-        .then((res) => {
-          btn.classList.remove("busy");
-          if (res.success) {
-            // Chỉ cập nhật bộ nhớ máy khi server đã lưu xong
-            const b = BOX_MAP[target];
-            if (b) { b.bin = bin; b.operator = operator; b.updatedTime = res.nowStr; }
-            recent.unshift({ boxId: target, bin: bin, time: clock() });
-            if (recent.length > 8) recent.length = 8;
-            renderProgress();
-            // Focus ô tìm ngay để súng quét có thể quét thùng kế tiếp khi màn xanh còn hiện
-            backToScan(true);
-            showFlash(target, bin);
-          } else if (res.isAlreadySaved) {
-            // Server có vị trí mới hơn (người khác vừa lưu) thì cập nhật lại máy
-            const b = BOX_MAP[target];
-            if (b) { b.bin = res.existingBin; b.operator = res.existingUser; }
-            renderProgress();
-            renderDigits();
-            confirmDlg(
-              "Thùng đã lên kệ!",
-              `${target} đang ở kệ ${res.existingBin} (bởi ${res.existingUser || "?"}).\n\nĐổi sang ${bin}?`,
-              "⚠️", "Đổi kệ",
-              () => save(true),
-              () => selectBox(target)
-            );
-          } else {
-            renderDigits();
-            alertDlg("Không lưu được", res.message || "Lỗi không xác định", "❌");
-          }
-        })
-        .catch((err) => {
-          btn.classList.remove("busy");
-          renderDigits();
-          alertDlg("Mất kết nối", "Chưa lưu được. Kiểm tra mạng rồi bấm lưu lại.\n(" + err.message + ")", "📡");
+    function addRecent(boxId, bin) {
+      recent.unshift({ boxId: boxId, bin: bin, time: clock(), status: "pending" });
+      if (recent.length > 8) recent.length = 8;
+      renderRecent();
+    }
+
+    function setRecentStatus(item, status) {
+      const r = recent.find((x) => x.boxId === item.boxId && x.bin === item.bin && x.status === "pending");
+      if (r) r.status = status;
+      renderRecent();
+    }
+
+    // ---------- LƯU NGẦM: HÀNG CHỜ GỬI LÊN SHEET ----------
+    // Hàng chờ giữ trong máy nên tắt app hay mất mạng giữa chừng cũng không mất; có mạng là tự gửi tiếp.
+    const OUTBOX_KEY = "WAREHOUSE_OUTBOX";
+    let outbox = [];
+    try {
+      outbox = JSON.parse(store.get(OUTBOX_KEY) || "[]");
+      if (!Array.isArray(outbox)) outbox = [];
+    } catch (e) { outbox = []; }
+    let flushing = false;
+    let retryTimer = null;
+    let retryDelay = 2000;
+    let flushError = "";
+    let batchSupported = true;
+
+    function persistOutbox() {
+      store.set(OUTBOX_KEY, JSON.stringify(outbox));
+    }
+
+    function enqueueSave(item) {
+      // Cùng một thùng lưu lại khi lần trước chưa gửi: chỉ giữ lần mới nhất
+      outbox = outbox.filter((o) => o.boxId !== item.boxId);
+      outbox.push(item);
+      persistOutbox();
+      refreshSync();
+      flushNow();
+    }
+
+    // Áp các thùng đang chờ lưu lên dữ liệu vừa tải về, để không bị "mất" trên màn hình
+    function applyOutbox() {
+      outbox.forEach((o) => {
+        const b = BOX_MAP[o.boxId];
+        if (b) { b.bin = o.bin; b.operator = o.operator; b.updatedTime = ""; }
+      });
+    }
+
+    function flushNow() {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+      retryDelay = 2000;
+      flush();
+    }
+
+    async function flush() {
+      if (flushing || !outbox.length) return;
+      flushing = true;
+      const batch = outbox.slice(0, 25);
+      let ok = false;
+      try {
+        const results = await sendBatch(batch);
+        const problems = [];
+        batch.forEach((item, i) => {
+          const hasNewer = outbox.some((o) => o.boxId === item.boxId && batch.indexOf(o) === -1);
+          const p = handleResult(item, results[i] || { success: false, message: "Không có phản hồi" }, hasNewer);
+          if (p) problems.push(p);
         });
+        outbox = outbox.filter((o) => batch.indexOf(o) === -1);
+        persistOutbox();
+        flushError = "";
+        retryDelay = 2000;
+        ok = true;
+        if (!outbox.length) lastSyncText = `Đã lưu lên Sheet · ${clock()}`;
+        if (problems.length) reportProblems(problems);
+      } catch (err) {
+        // Mất mạng / server bận: giữ nguyên hàng chờ, thử lại sau 2s, 4s, 8s… tối đa 30s
+        flushError = err.message || "Mất kết nối";
+        retryTimer = setTimeout(() => { retryTimer = null; flush(); }, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, 30000);
+      } finally {
+        flushing = false;
+        refreshSync();
+        if (ok && outbox.length) flush();
+      }
+    }
+
+    async function sendBatch(batch) {
+      const items = batch.map((o) => ({ boxId: o.boxId, bin: o.bin, operator: o.operator, forceOverwrite: o.force }));
+      if (batchSupported) {
+        const res = await callApi("updateBatch", { items: items });
+        if (res.success && Array.isArray(res.results)) return res.results;
+        // Apps Script bản cũ chưa có updateBatch: lưu từng thùng
+        if (/Action không hợp lệ/.test(res.message || "")) batchSupported = false;
+        else throw new Error(res.message || "Lỗi lưu");
+      }
+      const results = [];
+      for (const it of items) results.push(await callApi("updateLocation", it));
+      return results;
+    }
+
+    // Trả về mô tả lỗi nếu thùng này không lưu được, null nếu ổn
+    function handleResult(item, r, hasNewer) {
+      const b = BOX_MAP[item.boxId];
+      // Gửi lại sau khi mất mạng: server báo trùng chính vị trí mình đã lưu thì coi như xong
+      const sameBin = r.isAlreadySaved && String(r.existingBin || "").toUpperCase() === item.bin;
+      if (r.success || sameBin) {
+        if (b && !hasNewer && r.nowStr) b.updatedTime = r.nowStr;
+        setRecentStatus(item, "saved");
+        return null;
+      }
+      if (b && !hasNewer) {
+        if (r.isAlreadySaved) { b.bin = r.existingBin; b.operator = r.existingUser; b.updatedTime = ""; }
+        else { b.bin = item.prevBin; b.operator = item.prevOperator; b.updatedTime = item.prevTime; }
+      }
+      renderProgress();
+      if (selectedId === item.boxId) selectBox(item.boxId);
+      setRecentStatus(item, r.isAlreadySaved ? "conflict" : "failed");
+      return { item: item, r: r };
+    }
+
+    function reportProblems(problems) {
+      if (problems.length === 1 && problems[0].r.isAlreadySaved) {
+        const { item, r } = problems[0];
+        confirmDlg(
+          "Người khác đã lên kệ thùng này",
+          `${item.boxId} vừa được ${r.existingUser || "?"} lên kệ ${r.existingBin}.\nBạn đã lưu ${item.bin}.\n\nĐổi sang ${item.bin}?`,
+          "⚠️", "Đổi kệ",
+          () => resave(item)
+        );
+        return;
+      }
+      const lines = problems.map(({ item, r }) =>
+        r.isAlreadySaved ? `${item.boxId}: đã ở kệ ${r.existingBin} (${r.existingUser || "?"})` : `${item.boxId}: ${r.message || "lỗi"}`);
+      alertDlg("Có thùng chưa lưu được", lines.join("\n") + "\n\nMở lại từng thùng để kiểm tra.", "❌");
+    }
+
+    function resave(item) {
+      const b = BOX_MAP[item.boxId];
+      const prev = b ? { bin: b.bin, op: b.operator, t: b.updatedTime } : { bin: "", op: "", t: "" };
+      if (b) { b.bin = item.bin; b.operator = item.operator; b.updatedTime = ""; }
+      addRecent(item.boxId, item.bin);
+      renderProgress();
+      enqueueSave(Object.assign({}, item, { force: true, prevBin: prev.bin, prevOperator: prev.op, prevTime: prev.t, at: Date.now() }));
+    }
+
+    function refreshSync() {
+      const n = outbox.length;
+      if (n && flushError) setSync("err", `Mất mạng · ${n} thùng chờ lưu · chạm để gửi lại`);
+      else if (n) setSync("loading", `Đang lưu ${n} thùng lên Sheet…`);
+      else if (!loading && lastSyncText) setSync("ok", lastSyncText);
+    }
+
+    function syncTap() {
+      if (outbox.length) flushNow();
+      loadData(true);
     }
 
     let flashTimer = null;
@@ -785,7 +955,7 @@
       $("flash").hidden = false;
       vibrate(80);
       clearTimeout(flashTimer);
-      flashTimer = setTimeout(hideFlash, 1200);
+      flashTimer = setTimeout(hideFlash, 700);
     }
     function hideFlash() {
       clearTimeout(flashTimer);
