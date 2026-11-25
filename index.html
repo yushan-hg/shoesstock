@@ -36,6 +36,11 @@
       --accent-soft: #f0e8fe;
       --accent-dark: #6326cc;
     }
+    body[data-floor="3"] {
+      --accent: #0f766e;
+      --accent-soft: #ddf3ef;
+      --accent-dark: #0b5e57;
+    }
 
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     [hidden] { display: none !important; }
@@ -267,7 +272,7 @@
       background: var(--surface); color: var(--text); font-size: 19px; font-weight: 600; text-transform: uppercase; outline: none;
     }
     .setup-name:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-    .floor-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .floor-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
     .floor-card {
       height: 92px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--surface);
       display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; padding: 10px 12px;
@@ -277,6 +282,7 @@
     .floor-card .fp { font-size: 14px; color: var(--text-2); }
     .floor-card[data-f="1"].on { border-color: #0b6bcb; background: #0b6bcb; color: #ffffff; }
     .floor-card[data-f="2"].on { border-color: #7c3aed; background: #7c3aed; color: #ffffff; }
+    .floor-card[data-f="3"].on { border-color: #0f766e; background: #0f766e; color: #ffffff; }
     .floor-card.on .fp { color: rgba(255, 255, 255, 0.85); }
     .setup .cta { margin-top: 24px; }
     .setup-cancel { width: 100%; margin-top: 6px; height: 44px; border: none; background: none; color: var(--text-2); font-size: 15px; font-weight: 600; }
@@ -298,7 +304,7 @@
 
   <div class="app">
     <header class="hdr">
-      <button class="floor-chip" onclick="openSetup()" aria-label="Đổi tầng">
+      <button class="floor-chip" onclick="openSetup()" aria-label="Đổi khu vực">
         <span class="n" id="floorNum">—</span>
         <span class="p" id="floorPre">S10</span>
       </button>
@@ -370,6 +376,7 @@
       <div class="floor-cards">
         <button class="floor-card" data-f="1" onclick="pickFloor(1)"><span class="fn">Tầng 1</span><span class="fp">S10······</span></button>
         <button class="floor-card" data-f="2" onclick="pickFloor(2)"><span class="fn">Tầng 2</span><span class="fp">S15······</span></button>
+        <button class="floor-card" data-f="3" onclick="pickFloor(3)"><span class="fn">Khu L10</span><span class="fp">L10······</span></button>
       </div>
       <button class="cta" id="setupGo" onclick="saveSetup()" disabled>Bắt đầu</button>
       <button class="setup-cancel" id="setupCancel" onclick="closeSetup()" hidden>Huỷ</button>
@@ -431,7 +438,14 @@
     const clock = (t) => { const d = t ? new Date(t) : new Date(); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
 
     let operator = store.get("WAREHOUSE_OPERATOR") || "";
+    // Khu vực làm việc: tên hiển thị, tiền tố mã kệ, màu chủ đạo
+    const AREAS = {
+      1: { name: "Tầng 1", prefix: "S10", color: "#0b6bcb" },
+      2: { name: "Tầng 2", prefix: "S15", color: "#7c3aed" },
+      3: { name: "Khu L10", prefix: "L10", color: "#0f766e" }
+    };
     let floor = parseInt(store.get("WAREHOUSE_FLOOR"), 10) || null;
+    if (!AREAS[floor]) floor = null;
     let BOX_MAP = {};
     let BOX_LIST = [];
     let selectedId = "";
@@ -442,7 +456,8 @@
     let lastSyncText = "";
     const recent = [];
 
-    const prefix = () => (floor === 1 ? "S10" : "S15");
+    const area = () => AREAS[floor] || AREAS[1];
+    const prefix = () => area().prefix;
 
     document.addEventListener("DOMContentLoaded", function() {
       $("binInput").addEventListener("input", onBinInput);
@@ -648,7 +663,7 @@
           <div class="state-bin">${esc(b.bin)}</div>
           <div class="state-meta">bởi ${esc(b.operator || "?")}${b.updatedTime ? " · " + esc(b.updatedTime) : ""} — kiểm tra kỹ đơn nhập để tránh nhầm ngày</div>
           ${justChanged ? `<div class="state-note">⚠️ Vừa có người khác lên kệ thùng này</div>` : ""}
-          ${otherFloor ? `<div class="state-note">Kệ này không thuộc tầng bạn đang chọn (${prefix()}).</div>` : ""}`;
+          ${otherFloor ? `<div class="state-note">Kệ này không thuộc khu bạn đang chọn (${area().name} · ${prefix()}).</div>` : ""}`;
         $("binPanel").hidden = true;
         $("btnMove").hidden = false;
         $("binLabel").textContent = "Vị trí kệ MỚI";
@@ -689,11 +704,11 @@
       if (focus) $("boxInput").focus();
     }
 
-    // Chỉ giữ số; quét mã kệ đầy đủ "S15xxxxxx" thì bỏ tiền tố và kiểm tra đúng tầng
+    // Chỉ giữ số; quét mã kệ đầy đủ "S15xxxxxx" / "L10xxxxxx" thì bỏ tiền tố và kiểm tra đúng khu
     function onBinInput() {
       const inp = $("binInput");
       let v = inp.value.toUpperCase().replace(/\s/g, "");
-      if (v.startsWith("S")) {
+      if (/^[A-Z]/.test(v)) {
         if (v.length < 3) { digits = ""; renderDigits(); return; }
         const p = v.slice(0, 3);
         if (p !== prefix()) {
@@ -701,7 +716,7 @@
           digits = "";
           renderDigits();
           inp.blur();
-          alertDlg("Sai tầng", `Mã kệ ${p}… thuộc tầng khác.\nBạn đang chọn ${prefix()} (Tầng ${floor}).`, "🏢", () => inp.focus());
+          alertDlg("Sai khu vực", `Mã kệ ${p}… thuộc khu khác.\nBạn đang chọn ${area().name} (${prefix()}).`, "🏢", () => inp.focus());
           return;
         }
         v = v.slice(3);
@@ -728,7 +743,7 @@
       if (!$("flash").hidden) hideFlash();
       if (anyOverlayOpen() || $("viewBox").hidden || $("binPanel").hidden) return;
       if (e.target && e.target.tagName === "INPUT") return;
-      if (/^[0-9sS]$/.test(e.key)) {
+      if (/^[0-9sSlL]$/.test(e.key)) {
         e.preventDefault();
         const inp = $("binInput");
         inp.value += e.key;
@@ -1071,11 +1086,11 @@
     // Màu thanh trạng thái điện thoại cũng đổi theo tầng
     function setFloorTheme(f) {
       document.body.dataset.floor = f;
-      $("themeColor").setAttribute("content", f === 2 ? "#7c3aed" : "#0b6bcb");
+      $("themeColor").setAttribute("content", (AREAS[f] || AREAS[1]).color);
     }
     function applyFloor() {
       setFloorTheme(floor || 1);
-      $("floorNum").textContent = floor ? "Tầng " + floor : "Tầng ?";
+      $("floorNum").textContent = floor ? area().name : "Chưa chọn";
       $("floorPre").textContent = prefix();
       renderDigits();
     }
@@ -1094,7 +1109,7 @@
     function renderMenu() {
       const items = [
         { t: "Ca làm việc" },
-        { ic: "👤", b: "Đổi nhân viên / tầng", s: `${operator || "Chưa nhập"} · Tầng ${floor || "?"} (${prefix()})`, fn: openSetup },
+        { ic: "👤", b: "Đổi nhân viên / khu vực", s: `${operator || "Chưa nhập"} · ${floor ? area().name : "Chưa chọn"} (${prefix()})`, fn: openSetup },
         { ic: "🔄", b: "Tải lại dữ liệu", s: lastLoadAt ? `Lần cuối ${clock(lastLoadAt)}` : "Chưa tải", fn: () => { closeMenu(); loadData(); } },
         { t: "Quản trị" }
       ];

@@ -73,7 +73,7 @@ function makeServer() {
   return st;
 }
 
-function makeDom({ seed = true, outbox = null, server }) {
+function makeDom({ seed = true, floor = '2', outbox = null, server }) {
   return new JSDOM(html, {
     url: 'https://example.test/',
     runScripts: 'dangerously',
@@ -81,7 +81,7 @@ function makeDom({ seed = true, outbox = null, server }) {
     beforeParse(win) {
       if (seed) {
         win.localStorage.setItem('WAREHOUSE_OPERATOR', 'TEST');
-        win.localStorage.setItem('WAREHOUSE_FLOOR', '2');
+        win.localStorage.setItem('WAREHOUSE_FLOOR', floor);
       }
       if (outbox) win.localStorage.setItem('WAREHOUSE_OUTBOX', JSON.stringify(outbox));
       win.scrollTo = () => {};
@@ -234,7 +234,7 @@ function helpers(dom) {
   // ---- Súng quét mã kệ ----
   typeBox('A40'); enterBox(); await tick(30); $('btnMove').click(); $('binInput').blur();
   for (const c of 'S10123456') key(c);
-  check('quét mã kệ sai tầng: cảnh báo', modalOpen() && $('dlgTitle').textContent === 'Sai tầng');
+  check('quét mã kệ sai tầng: cảnh báo', modalOpen() && $('dlgTitle').textContent === 'Sai khu vực');
   dlgBtn('Đã hiểu').click();
   $('binInput').blur();
   for (const c of 'S15123456') key(c);
@@ -275,6 +275,37 @@ function helpers(dom) {
     check('mở lại: dữ liệu tải về vẫn giữ vị trí chờ lưu', h.g(`BOX_MAP['IDAF261015A40'].bin`) === 'S15444444');
     check('mở lại: gửi xong hàng chờ', h.stored().length === 0 && server2.current('IDAF261015A40').bin === 'S15444444');
     dom2.window.close();
+  }
+
+  // ================= Khu L10 =================
+  {
+    const server4 = makeServer();
+    const dom4 = makeDom({ seed: false, server: server4 }); const h = helpers(dom4);
+    await tick(60);
+    check('L10: có lựa chọn trong màn thiết lập', !!h.$('setup').querySelector('.floor-card[data-f="3"]'));
+    h.$('setupName').value = 'an'; h.$('setupName').dispatchEvent(new dom4.window.Event('input'));
+    h.g('pickFloor(3)'); h.g('saveSetup()');
+    check('L10: lưu khu + đổi màu', h.d.body.dataset.floor === '3' && h.$('themeColor').getAttribute('content') === '#0f766e'
+      && h.w.localStorage.getItem('WAREHOUSE_FLOOR') === '3');
+    check('L10: header hiện tên + tiền tố', h.$('floorNum').textContent === 'Khu L10' && h.$('floorPre').textContent === 'L10');
+    h.typeBox('B7'); h.enterBox(); await tick(30);
+    check('L10: ô kệ có tiền tố L10', h.$('slotPre').textContent === 'L10');
+    h.$('binInput').blur();
+    for (const c of 'S15123456') h.key(c);
+    check('L10: quét mã kệ S15 bị chặn', h.modalOpen() && h.$('dlgTitle').textContent === 'Sai khu vực' && h.$('dlgBody').textContent.includes('Khu L10'));
+    h.dlgBtn('Đã hiểu').click();
+    h.typeBin('l10123456');
+    check('L10: quét/dán mã kệ L10 đầy đủ: lấy 6 số', h.g('digits') === '123456' && h.$('binHelp').textContent.includes('L10123456'));
+    h.binEnter(); await tick(60);
+    check('L10: lưu lên Sheet với tiền tố L10', server4.current('IDAF261015B7').bin === 'L10123456');
+    h.typeBox('A4'); h.enterBox(); await tick(30);
+    check('L10: thùng ở kệ S10 báo khác khu', h.$('bxState').textContent.includes('không thuộc khu bạn đang chọn (Khu L10 · L10)'));
+    dom4.window.close();
+    // máy đã chọn L10 từ trước: mở lại vẫn nhớ
+    const dom5 = makeDom({ floor: '3', server: makeServer() }); const h5 = helpers(dom5);
+    await tick(40);
+    check('L10: mở lại app vẫn nhớ khu L10', h5.$('setup').hidden && h5.g('prefix()') === 'L10');
+    dom5.window.close();
   }
 
   // ================= Apps Script bản cũ =================
