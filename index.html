@@ -454,10 +454,14 @@
       $("setupName").addEventListener("input", renderSetup);
       $("setupName").addEventListener("keydown", (e) => { if (e.key === "Enter") saveSetup(); });
       document.addEventListener("keydown", onGlobalKey);
-      // Quay lại app sau một lúc thì tự lấy dữ liệu mới (người khác có thể đã lên kệ)
+      // Quay lại app: lâu rồi thì tải lại toàn bộ, mới đây thì chỉ lấy vị trí kệ mới nhất
       document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible" && Date.now() - lastLoadAt > 120000) loadData(true);
+        if (document.visibilityState !== "visible") return;
+        if (Date.now() - lastLoadAt > 300000) loadData(true);
+        else pollBins();
       });
+      // Gần thời gian thực: mỗi 20 giây lấy vị trí kệ mới nhất để thấy người khác vừa lưu gì
+      setInterval(pollBins, POLL_MS);
 
       // Có mạng lại thì gửi ngay hàng chờ
       window.addEventListener("online", flushNow);
@@ -637,11 +641,13 @@
       if (b.bin) {
         const otherFloor = !b.bin.toUpperCase().startsWith(prefix());
         const pending = outbox.some((o) => o.boxId === id);
+        const justChanged = b.changedAt && Date.now() - b.changedAt < 120000;
         st.className = "state state-done";
         st.innerHTML = `
           <div class="state-label">Đã lên kệ${pending ? " · đang lưu lên Sheet ⏳" : ""}</div>
           <div class="state-bin">${esc(b.bin)}</div>
           <div class="state-meta">bởi ${esc(b.operator || "?")}${b.updatedTime ? " · " + esc(b.updatedTime) : ""} — kiểm tra kỹ đơn nhập để tránh nhầm ngày</div>
+          ${justChanged ? `<div class="state-note">⚠️ Vừa có người khác lên kệ thùng này</div>` : ""}
           ${otherFloor ? `<div class="state-note">Kệ này không thuộc tầng bạn đang chọn (${prefix()}).</div>` : ""}`;
         $("binPanel").hidden = true;
         $("btnMove").hidden = false;
@@ -661,6 +667,8 @@
       window.scrollTo(0, 0);
       // Thùng chưa lên kệ: con trỏ vào ô kệ luôn để bàn phím số tự bật lên
       if (!b.bin && !same) $("binInput").focus();
+      // Hỏi Sheet vị trí mới nhất của thùng này, phòng người khác vừa lưu
+      if (!same) freshCheck(id);
     }
 
     // Thùng đã lên kệ: phải bấm rõ ràng mới hiện ô nhập kệ mới
@@ -741,7 +749,7 @@
       const b = BOX_MAP[target];
       const item = {
         boxId: target, bin: bin, operator: operator,
-        // Thùng đã có kệ thì người dùng đã bấm "Chuyển sang kệ khác", cho ghi đè luôn
+        // prevBin = vị trí đang thấy trên máy; server chỉ ghi khi Sheet vẫn đúng như vậy
         force: !!(b && b.bin),
         prevBin: b ? b.bin : "", prevOperator: b ? b.operator : "", prevTime: b ? b.updatedTime : "",
         at: Date.now()
@@ -780,13 +788,18 @@
     let retryDelay = 2000;
     let flushError = "";
     let batchSupported = true;
+    let inFlight = [];
+    const savedAt = {};   // mã thùng -> lúc server xác nhận đã lưu (để bỏ qua dữ liệu cũ hơn)
 
     function persistOutbox() {
       store.set(OUTBOX_KEY, JSON.stringify(outbox));
     }
 
     function enqueueSave(item) {
-      // Cùng một thùng lưu lại khi lần trước chưa gửi: chỉ giữ lần mới nhất
+      // Cùng một thùng lưu lại khi lần trước chưa gửi: chỉ giữ lần mới nhất,
+      // nhưng giữ vị trí cũ của lần trước vì Sheet vẫn đang là vị trí đó
+      const older = outbox.find((o) => o.boxId === item.boxId && inFlight.indexOf(o) === -1);
+      if (older) Object.assign(item, { force: older.force, prevBin: older.prevBin, prevOperator: older.prevOperator, prevTime: older.prevTime });
       outbox = outbox.filter((o) => o.boxId !== item.boxId);
       outbox.push(item);
       persistOutbox();
@@ -813,6 +826,7 @@
       if (flushing || !outbox.length) return;
       flushing = true;
       const batch = outbox.slice(0, 25);
+      inFlight = batch;
       let ok = false;
       try {
         const results = await sendBatch(batch);
@@ -836,13 +850,15 @@
         retryDelay = Math.min(retryDelay * 2, 30000);
       } finally {
         flushing = false;
+        inFlight = [];
         refreshSync();
         if (ok && outbox.length) flush();
       }
     }
 
     async function sendBatch(batch) {
-      const items = batch.map((o) => ({ boxId: o.boxId, bin: o.bin, operator: o.operator, forceOverwrite: o.force }));
+      // forceOverwrite cho Apps Script bản cũ; bản mới dùng expectBin để chống ghi đè
+      const items = batch.map((o) => ({ boxId: o.boxId, bin: o.bin, operator: o.operator, forceOverwrite: o.force, expectBin: o.prevBin || "" }));
       if (batchSupported) {
         const res = await callApi("updateBatch", { items: items });
         if (res.success && Array.isArray(res.results)) return res.results;
@@ -862,6 +878,7 @@
       const sameBin = r.isAlreadySaved && String(r.existingBin || "").toUpperCase() === item.bin;
       if (r.success || sameBin) {
         if (b && !hasNewer && r.nowStr) b.updatedTime = r.nowStr;
+        savedAt[item.boxId] = Date.now();
         setRecentStatus(item, "saved");
         return null;
       }
@@ -878,16 +895,27 @@
     function reportProblems(problems) {
       if (problems.length === 1 && problems[0].r.isAlreadySaved) {
         const { item, r } = problems[0];
-        confirmDlg(
-          "Người khác đã lên kệ thùng này",
-          `${item.boxId} vừa được ${r.existingUser || "?"} lên kệ ${r.existingBin}.\nBạn đã lưu ${item.bin}.\n\nĐổi sang ${item.bin}?`,
-          "⚠️", "Đổi kệ",
-          () => resave(item)
-        );
+        if (r.existingBin) {
+          confirmDlg(
+            "Người khác đã lên kệ thùng này",
+            `${item.boxId} vừa được ${r.existingUser || "?"} lên kệ ${r.existingBin}.\nBạn đã lưu ${item.bin}.\n\nĐổi sang ${item.bin}?`,
+            "⚠️", "Đổi kệ",
+            () => resave(item)
+          );
+        } else {
+          confirmDlg(
+            "Vị trí kệ vừa bị xoá",
+            `Vị trí kệ của ${item.boxId} vừa bị xoá trên Sheet.\n\nLưu lại vào ${item.bin}?`,
+            "⚠️", "Lưu lại",
+            () => resave(item)
+          );
+        }
         return;
       }
       const lines = problems.map(({ item, r }) =>
-        r.isAlreadySaved ? `${item.boxId}: đã ở kệ ${r.existingBin} (${r.existingUser || "?"})` : `${item.boxId}: ${r.message || "lỗi"}`);
+        r.isAlreadySaved
+          ? (r.existingBin ? `${item.boxId}: đã ở kệ ${r.existingBin} (${r.existingUser || "?"})` : `${item.boxId}: vị trí kệ vừa bị xoá`)
+          : `${item.boxId}: ${r.message || "lỗi"}`);
       alertDlg("Có thùng chưa lưu được", lines.join("\n") + "\n\nMở lại từng thùng để kiểm tra.", "❌");
     }
 
@@ -910,6 +938,81 @@
     function syncTap() {
       if (outbox.length) flushNow();
       loadData(true);
+    }
+
+    // ---------- GẦN THỜI GIAN THỰC: THẤY NGƯỜI KHÁC VỪA LƯU GÌ ----------
+    const POLL_MS = 20000;
+    let polling = false;
+    let binsSupported = true;    // Apps Script bản cũ chưa có 'bins' / 'checkBox' thì bỏ qua
+    let checkSupported = true;
+
+    // Cập nhật một thùng theo Sheet. Bỏ qua thùng mình đang chờ lưu,
+    // và dữ liệu đọc trước lúc mình vừa lưu xong (để không bị quay về vị trí cũ)
+    function applyServerBin(id, bin, op, time, startedAt) {
+      const b = BOX_MAP[id];
+      if (!b || outbox.some((o) => o.boxId === id)) return false;
+      if (savedAt[id] && savedAt[id] > startedAt) return false;
+      bin = bin || "";
+      op = op || "";
+      if (b.bin === bin && b.operator === op) {
+        if (time) b.updatedTime = time;
+        return false;
+      }
+      if (bin !== b.bin && op.toUpperCase() !== operator.toUpperCase()) b.changedAt = Date.now();
+      b.bin = bin;
+      b.operator = op;
+      b.updatedTime = time || "";
+      if (selectedId === id && !$("viewBox").hidden) {
+        selectBox(id);
+        vibrate([60, 40, 60]);
+      }
+      return true;
+    }
+
+    function freshCheck(id) {
+      if (!checkSupported) return;
+      const startedAt = Date.now();
+      callApi("checkBox", { boxId: id })
+        .then((r) => {
+          if (!r.success) {
+            if (/Action không hợp lệ/.test(r.message || "")) checkSupported = false;
+            return;
+          }
+          if (r.found && applyServerBin(id, r.bin, r.operator, r.updatedTime, startedAt)) renderProgress();
+        })
+        .catch(() => {});
+    }
+
+    function pollBins() {
+      if (!binsSupported || polling || loading || document.visibilityState === "hidden" || !BOX_LIST.length) return;
+      polling = true;
+      const startedAt = Date.now();
+      let needReload = false;
+      callApi("bins")
+        .then((r) => {
+          if (!r.success) {
+            if (/Action không hợp lệ/.test(r.message || "")) binsSupported = false;
+            return;
+          }
+          // Có thùng mới / bớt thùng (vừa nạp file khác) thì tải lại toàn bộ
+          if (r.boxes.length !== BOX_LIST.length || r.boxes.some((x) => !BOX_MAP[x[0]])) {
+            needReload = true;
+            return;
+          }
+          let changed = 0;
+          r.boxes.forEach((x) => { if (applyServerBin(x[0], x[1], x[2], x[3], startedAt)) changed++; });
+          lastSyncText = `${r.rows} dòng · cập nhật ${clock()}`;
+          refreshSync();
+          if (changed) {
+            renderProgress();
+            if (!$("viewScan").hidden && $("boxInput").value.trim()) search(false);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          polling = false;
+          if (needReload) loadData(true);
+        });
     }
 
     let flashTimer = null;

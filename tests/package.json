@@ -1,0 +1,11 @@
+{
+  "name": "shoesstock-tests",
+  "private": true,
+  "description": "Bài thử cho giao diện (jsdom) và Apps Script (Sheet giả). Không gọi Google thật.",
+  "scripts": {
+    "test": "node server.test.js && node ui.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "24.1.3"
+  }
+}

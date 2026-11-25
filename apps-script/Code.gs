@@ -29,13 +29,20 @@ function doPost(e) {
 
     case 'updateLocation':
       return jsonOut(withLock(function() {
-        return updateLocation(req.boxId, req.bin, req.operator, req.forceOverwrite);
+        return updateLocations([{ boxId: req.boxId, bin: req.bin, operator: req.operator,
+                                  forceOverwrite: req.forceOverwrite, expectBin: req.expectBin }])[0];
       }));
 
     case 'updateBatch':
       return jsonOut(withLock(function() {
         return { success: true, results: updateLocations(req.items) };
       }));
+
+    case 'bins':
+      return jsonOut(getBinsSnapshot());
+
+    case 'checkBox':
+      return jsonOut(checkBox(req.boxId));
 
     case 'verifyPin':
       return jsonOut({ success: isValidPin(req.pin) });
@@ -96,15 +103,6 @@ function loadAllWarehouseData() {
     for (var i = 1; i < data.length; i++) {
       if (!data[i] || !data[i][1]) continue;
 
-      var updatedTimeStr = "";
-      if (data[i][6]) {
-        try {
-          updatedTimeStr = Utilities.formatDate(new Date(data[i][6]), "Asia/Taipei", "HH:mm dd/MM");
-        } catch(e) {
-          updatedTimeStr = String(data[i][6]);
-        }
-      }
-
       items.push({
         inboundNo: String(data[i][0] || "").trim(),
         boxId: String(data[i][1] || "").trim().toUpperCase(),
@@ -112,7 +110,7 @@ function loadAllWarehouseData() {
         qty: Number(data[i][3]) || 0,
         bin: String(data[i][4] || "").trim(),
         operator: String(data[i][5] || "").trim(),
-        updatedTime: updatedTimeStr,
+        updatedTime: formatShortTime_(data[i][6]),
         isError: false // Cho phép lên kệ bình thường
       });
     }
@@ -121,6 +119,92 @@ function loadAllWarehouseData() {
   } catch (err) {
     return { success: false, message: err.toString() };
   }
+}
+
+function formatShortTime_(value) {
+  if (!value) return "";
+  try {
+    return Utilities.formatDate(new Date(value), "Asia/Taipei", "HH:mm dd/MM");
+  } catch (e) {
+    return String(value);
+  }
+}
+
+// Vị trí kệ hiện tại của mọi thùng (nhẹ hơn 'load'): máy gọi định kỳ để thấy người khác vừa lưu gì
+// Trả về [mã thùng, kệ, người, giờ] cho mỗi thùng
+function getBinsSnapshot() {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+    if (!sheet) return { success: false, message: "Chưa có dữ liệu!" };
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return { success: true, rows: 0, boxes: [] };
+
+    var data = sheet.getRange(2, 2, lastRow - 1, 6).getValues(); // cột B..G
+    var seen = {};
+    var boxes = [];
+    for (var i = 0; i < data.length; i++) {
+      var id = String(data[i][0] || "").trim().toUpperCase();
+      if (!id) continue;
+      var bin = String(data[i][3] || "").trim();
+      if (seen[id] === undefined) {
+        seen[id] = boxes.length;
+        boxes.push([id, bin, String(data[i][4] || "").trim(), formatShortTime_(data[i][5])]);
+      } else if (!boxes[seen[id]][1] && bin) {
+        boxes[seen[id]] = [id, bin, String(data[i][4] || "").trim(), formatShortTime_(data[i][5])];
+      }
+    }
+    return { success: true, rows: data.length, boxes: boxes };
+  } catch (err) {
+    return { success: false, message: err.toString() };
+  }
+}
+
+// Vị trí kệ mới nhất của một thùng: máy gọi ngay khi mở thùng
+function checkBox(boxId) {
+  try {
+    var cleanBoxId = String(boxId || "").trim().toUpperCase();
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+    if (!sheet || !cleanBoxId) return { success: false, message: "Thiếu dữ liệu!" };
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return { success: true, found: false };
+
+    var rows = indexBoxRows_(sheet, lastRow)[cleanBoxId];
+    if (!rows) return { success: true, found: false };
+    var cur = readCurrentBin_(sheet, toRuns_(rows), true);
+    return { success: true, found: true, bin: cur.bin, operator: cur.operator, updatedTime: cur.updatedTime };
+  } catch (err) {
+    return { success: false, message: err.toString() };
+  }
+}
+
+// Mã thùng -> danh sách số dòng (đọc riêng cột B)
+function indexBoxRows_(sheet, lastRow) {
+  var ids = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
+  var index = {};
+  for (var i = 0; i < ids.length; i++) {
+    var id = String(ids[i][0]).trim().toUpperCase();
+    if (!id) continue;
+    if (!index[id]) index[id] = [];
+    index[id].push(i + 2);
+  }
+  return index;
+}
+
+// Kệ / người / giờ hiện tại của một thùng: lấy dòng đầu tiên đã có kệ
+function readCurrentBin_(sheet, runs, withTime) {
+  for (var r = 0; r < runs.length; r++) {
+    var cur = sheet.getRange(runs[r][0], 5, runs[r][1], withTime ? 3 : 2).getValues();
+    for (var k = 0; k < cur.length; k++) {
+      if (cur[k][0]) {
+        return {
+          bin: String(cur[k][0]).trim(),
+          operator: String(cur[k][1] || "").trim(),
+          updatedTime: withTime ? formatShortTime_(cur[k][2]) : ""
+        };
+      }
+    }
+  }
+  return { bin: "", operator: "", updatedTime: "" };
 }
 
 // 2. Ghi nhận vị trí kệ: chỉ đọc cột mã thùng, chỉ ghi đúng các dòng của thùng đó
@@ -141,15 +225,8 @@ function updateLocations(list) {
     var lastRow = sheet.getLastRow();
     if (lastRow <= 1) return failAll("Bảng tính không có dữ liệu!");
 
-    // Đọc cột B (mã thùng) một lần cho cả lô, lập chỉ mục mã thùng -> các số dòng
-    var ids = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
-    var index = {};
-    for (var i = 0; i < ids.length; i++) {
-      var id = String(ids[i][0]).trim().toUpperCase();
-      if (!id) continue;
-      if (!index[id]) index[id] = [];
-      index[id].push(i + 2);
-    }
+    // Đọc cột B (mã thùng) một lần cho cả lô
+    var index = indexBoxRows_(sheet, lastRow);
 
     var now = new Date();
     var nowStr = Utilities.formatDate(now, "Asia/Taipei", "yyyy-MM-dd HH:mm:ss");
@@ -181,21 +258,21 @@ function applyLocation_(sheet, index, item, nowStr, nowShort) {
   }
   var runs = toRuns_(rows);
 
-  // Kiểm tra trùng lặp vị trí đã có người lên kệ trước
-  if (!item.forceOverwrite) {
-    for (var r = 0; r < runs.length; r++) {
-      var cur = sheet.getRange(runs[r][0], 5, runs[r][1], 2).getValues();
-      for (var k = 0; k < cur.length; k++) {
-        if (cur[k][0]) {
-          return {
-            success: false,
-            isAlreadySaved: true,
-            existingBin: String(cur[k][0]).trim(),
-            existingUser: String(cur[k][1] || "").trim(),
-            message: "Thùng này đã được lên kệ trước đó!"
-          };
-        }
-      }
+  // Chống ghi đè: máy gửi kèm expectBin = vị trí kệ nó đang thấy ("" = chưa lên kệ).
+  // Chỉ ghi khi trong Sheet vẫn đúng vị trí đó; người khác đã đổi trước thì báo trùng.
+  // Máy bản cũ không gửi expectBin: forceOverwrite thì ghi luôn, không thì chỉ ghi khi chưa có kệ.
+  var hasExpect = item.expectBin !== undefined && item.expectBin !== null;
+  if (hasExpect || !item.forceOverwrite) {
+    var cur = readCurrentBin_(sheet, runs, false);
+    var expected = hasExpect ? String(item.expectBin).trim().toUpperCase() : "";
+    if (cur.bin.toUpperCase() !== expected) {
+      return {
+        success: false,
+        isAlreadySaved: true,
+        existingBin: cur.bin,
+        existingUser: cur.operator,
+        message: cur.bin ? "Thùng này đã được lên kệ trước đó!" : "Vị trí kệ của thùng vừa bị xoá!"
+      };
     }
   }
 

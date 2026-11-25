@@ -42,6 +42,22 @@ git remote add origin https://github.com/<tên-tài-khoản>/<tên-repo>.git
 git push -u origin main
 ```
 
+## Nhiều người cùng làm
+
+- Bấm lưu là xong ngay trên máy; việc ghi lên Sheet chạy ngầm, mất mạng thì giữ trong máy và tự gửi lại.
+- Mở một thùng thì app hỏi Sheet vị trí mới nhất của thùng đó; mỗi 20 giây app tự lấy vị trí kệ mới nhất của mọi thùng.
+- Khi lưu, app gửi kèm vị trí kệ mà nó đang thấy. Sheet đã bị người khác đổi trước thì server không ghi đè mà báo lại để người dùng chọn.
+
+## Chạy bài thử
+
+Không gọi Google thật: server dùng Sheet giả, giao diện chạy trong trình duyệt giả (jsdom).
+
+```bash
+cd tests
+npm install
+npm test
+```
+
 ## Lưu ý bảo mật
 
 - Repo public nên ai cũng xem được code và URL API. PIN Admin **không** nằm trong code nữa — được kiểm tra ở server (Script Properties).
